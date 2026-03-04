@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Marathon Fuel</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap" />
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -17,6 +17,7 @@ body{background:#040a0f;color:#e2e8f0;font-family:'DM Sans',sans-serif;-webkit-f
 ::-webkit-scrollbar-track{background:#040a0f}
 ::-webkit-scrollbar-thumb{background:#1e293b;border-radius:4px}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
+input[type=date]{color-scheme:dark}
 input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;outline:none;cursor:pointer}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;cursor:pointer}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
@@ -28,6 +29,58 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 <script type="text/babel">
 const {useState,useEffect,useMemo}=React;
 
+// ─── DATE HELPERS ─────────────────────────────────────────────────────────────
+const TODAY=new Date();
+const fmtToday=TODAY.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+function daysUntil(ds){const d=new Date(ds+"T00:00:00");return Math.ceil((d-TODAY)/86400000);}
+function weeksUntil(ds){return Math.max(0,Math.floor(daysUntil(ds)/7));}
+
+// ─── TRAINING PHASE ───────────────────────────────────────────────────────────
+// Each phase defines HOW nutrition priorities actually change — not just a label
+const PHASES=[
+  {minWeeks:17,maxWeeks:999,label:"Base Building",emoji:"🏗️",color:"#4ade80",
+   headline:"Build volume. Protect the engine.",
+   summary:"Training load is moderate. Focus is on consistent fuelling rather than aggressive recovery. Your body is adapting aerobically — give it steady fuel.",
+   carbMult:1.0,proteinMult:1.0,
+   priorities:["Consistency over perfection — eat well every day","Post-run carbs within 45 min to support daily adaptation","Protein 0.3g/kg per session for muscle maintenance","Iron-rich foods 2–3x/week (long runs cause foot-strike haemolysis)"],
+   warning:null},
+  {minWeeks:11,maxWeeks:16,label:"Build Phase",emoji:"📈",color:"#60a5fa",
+   headline:"Volume is rising. Recovery nutrition matters more now.",
+   summary:"Weekly mileage is climbing. Glycogen depletion becomes real after sessions. The post-run window is critical — missing it now accumulates fatigue over weeks.",
+   carbMult:1.1,proteinMult:1.05,
+   priorities:["Post-run carbs within 30 min — window is getting shorter","Carb targets are multiplied ×1.1 to match higher training volume","Extra sleep and anti-inflammatory foods on double-session days","Monitor energy — chronic fatigue here = overtraining"],
+   warning:"Macro targets on this page are automatically ×1.1 vs base."},
+  {minWeeks:7,maxWeeks:10,label:"Peak Training",emoji:"🔥",color:"#f59e0b",
+   headline:"Highest load. Every session needs maximum recovery.",
+   summary:"This is the hardest block. You're running more and harder than ever. Glycogen stores will be depleted daily. Nutrition is the difference between adapting and breaking down.",
+   carbMult:1.2,proteinMult:1.1,
+   priorities:["Eat within 20 min after every hard session — no exceptions","Carbs ×1.2 — you are genuinely depleting more glycogen","Daily protein target: 1.6–1.8g/kg total","Sleep 8–9 hrs if possible — growth hormone peaks overnight","Consider a daily banana before bed for overnight glycogen"],
+   warning:"Macro targets on this page are ×1.2. Do not undereat this block."},
+  {minWeeks:3,maxWeeks:6,label:"Taper",emoji:"🎯",color:"#f97316",
+   headline:"Ease off the volume. Keep the carbs up.",
+   summary:"Mileage drops 30–50% but nutrition should barely change. Your muscles are supercompensating — they store MORE glycogen when load drops. This is not the time to diet.",
+   carbMult:1.15,proteinMult:1.0,
+   priorities:["Keep carb intake high despite lower training load","Carbs ×1.15 — your muscles are actively storing glycogen now","Reduce fibre and gut-challenging foods in final 2 weeks","Cut alcohol completely — it impairs glycogen storage","Sleep is now as important as any run"],
+   warning:"Do not cut calories during taper. Your body needs fuel to store glycogen."},
+  {minWeeks:1,maxWeeks:2,label:"Race Week",emoji:"🏅",color:"#a78bfa",
+   headline:"Carb load. Protect the gut. Stick to the known.",
+   summary:"Glycogen supercompensation is your goal. 10g carbs/kg/day for 2–3 days. Low fibre. No new foods. Your gut is fragile — don't experiment this week.",
+   carbMult:1.3,proteinMult:0.85,
+   priorities:["10g carbs/kg/day for 2–3 days pre-race","Low fat, low fibre — easy on the gut","No new restaurants, no unfamiliar foods","Hydrate consistently — aim for pale straw urine","Race morning: familiar, tested pre-run meal 2.5–3 hrs before start"],
+   warning:"Activate Carb Load Mode below. Use race week meals."},
+  {minWeeks:0,maxWeeks:0,label:"Race Day!",emoji:"🏁",color:"#4ade80",
+   headline:"You're ready. Trust your training.",
+   summary:"Nothing you eat today will significantly help — and nothing you eat wrong will significantly hurt if you've fuelled well this week. Stick to the plan.",
+   carbMult:1.0,proteinMult:1.0,
+   priorities:["Pre-race meal: familiar, tested, 2.5–3 hrs before gun","Gel or banana 45 min before start if needed","Mid-race: 30–60g carbs/hr from mile 6 onward","Post-race: start with liquid, then real food within 1 hr"],
+   warning:null},
+];
+function getPhase(weeks){
+  if(weeks===null)return null;
+  return PHASES.find(p=>weeks>=p.minWeeks&&weeks<=p.maxWeeks)||PHASES[0];
+}
+
+// ─── SESSIONS ─────────────────────────────────────────────────────────────────
 const SESSIONS=[
   {id:"easy",label:"Easy Run",icon:"🏃",tag:"AEROBIC BASE",color:"#4ade80",description:"Conversational pace",met:7.5},
   {id:"interval",label:"Interval Session",icon:"⚡",tag:"HIGH INTENSITY",color:"#f59e0b",description:"VO2max efforts",met:13},
@@ -39,36 +92,39 @@ const SESSIONS=[
 
 const DEFAULT_DUR={easy:60,interval:75,tempo:55,midweek_long:90,long:150,rest:0};
 
+// ─── CALCULATIONS ─────────────────────────────────────────────────────────────
 const calcBurned=(met,kg,mins)=>{
   if(!kg||!mins)return null;
   const kcal=Math.round(met*kg*(mins/60));
   return{kcal,kj:Math.round(kcal*4.184)};
 };
-
 const REPLENISH_RATE={easy:.60,interval:.75,tempo:.70,midweek_long:.72,long:.75,rest:.40};
-
 const calcReplenish=(burned,kg,sid)=>{
   if(!burned||!kg)return null;
   const rate=REPLENISH_RATE[sid]||.65;
   const kcal=Math.max(Math.round(burned.kcal*rate),200);
   return{kcal,kj:Math.round(kcal*4.184),rate};
 };
-
-const calcMacros=(kg,sid,mins,carbLoad)=>{
+const calcMacros=(kg,sid,mins,carbLoad,phase)=>{
   if(!kg)return null;
   if(carbLoad){
     const c=Math.round(10*kg),p=Math.round(.25*kg),f=Math.round(.08*kg);
     const kcal=c*4+p*4+f*9;
-    return{carbs:c,protein:p,fat:f,kcal,kj:Math.round(kcal*4.184)};
+    return{carbs:c,protein:p,fat:f,kcal,kj:Math.round(kcal*4.184),phaseAdj:false};
   }
   const base={easy:{c:3.5,p:.28,f:.14},interval:{c:6.5,p:.40,f:.10},tempo:{c:5.5,p:.35,f:.11},midweek_long:{c:6.0,p:.36,f:.13},long:{c:8.5,p:.44,f:.11},rest:{c:2.8,p:.33,f:.17}};
   const m=base[sid]||base.easy;
   const df=mins?Math.max(.7,Math.min(1.5,mins/(DEFAULT_DUR[sid]||60))):1;
-  const carbs=Math.round(m.c*kg*df),protein=Math.round(m.p*kg*df),fat=Math.round(m.f*kg*df);
+  const cm=phase?phase.carbMult:1;
+  const pm=phase?phase.proteinMult:1;
+  const carbs=Math.round(m.c*kg*df*cm);
+  const protein=Math.round(m.p*kg*df*pm);
+  const fat=Math.round(m.f*kg*df);
   const kcal=carbs*4+protein*4+fat*9;
-  return{carbs,protein,fat,kcal,kj:Math.round(kcal*4.184)};
+  return{carbs,protein,fat,kcal,kj:Math.round(kcal*4.184),phaseAdj:phase&&(cm!==1||pm!==1)};
 };
 
+// ─── SWEAT PROFILES ───────────────────────────────────────────────────────────
 const SWEAT={
   normal:{label:"Normal Sweater",icon:"💧",color:"#60a5fa",desc:"~0.8–1.2L/hr",
     hydFn:(kg,id,m)=>{const b={easy:550,interval:850,tempo:750,midweek_long:950,long:1350,rest:250};return Math.round((b[id]||750)+(kg-70)*8+(m||60)*4);},
@@ -83,313 +139,113 @@ const SWEAT={
     cramp:"Prioritise magnesium-rich foods: spinach, pumpkin seeds, dark chocolate, almonds. Consider magnesium glycinate 300mg before bed on heavy training days."},
 };
 
-// ingredient fields: label, base(qty at 70kg ref), unit, scale(bool), kcalPer100 or kcalEach
+// ─── PRE-RUN MEALS ────────────────────────────────────────────────────────────
+const PRE={
+  easy:{window:"30–60 min before",goal:"Light fuel. Don't run fasted but don't overload the gut.",
+    meals:[
+      {name:"Banana + Peanut Butter",emoji:"🍌",timing:"30–45 min",kcal:174,items:["1 banana","1 tbsp peanut butter"],why:"Fast carbs + a little fat. Easy on the gut. Classic before easy efforts."},
+      {name:"Toast + Jam",emoji:"🍞",timing:"45–60 min",kcal:140,items:["1 slice white toast","1 tbsp jam"],why:"Simple high-GI carbs. Low fibre, very low GI distress risk."},
+      {name:"Rice Cakes + Honey",emoji:"🍚",timing:"30 min",kcal:150,items:["2 rice cakes","1 tbsp honey"],why:"Ultra light. Zero fibre. Great for early morning easy runs."},
+      {name:"Small Porridge",emoji:"🌾",timing:"90 min",kcal:230,items:["40g oats","200ml milk","1 tsp honey"],why:"Slow-release carbs — only if you have 90+ min before the run."},
+      {name:"Energy Bar",emoji:"🍫",timing:"30 min",kcal:200,items:["1 oat-based bar (Clif, Nakd)"],why:"Convenient and predictable. Good when time or appetite is low."},
+    ],avoid:["High-fat meals","Excess fibre","Dairy if lactose-sensitive","Large meals within 60 min"]},
+  interval:{window:"2–3 hrs before",goal:"Full glycogen stores. Near max capacity — the tank must be full.",
+    meals:[
+      {name:"Pasta + Light Sauce",emoji:"🍝",timing:"2.5–3 hrs",kcal:480,items:["150g pasta","light tomato sauce","100g chicken"],why:"Classic pre-hard-session carb load. Needs full time to digest."},
+      {name:"White Rice + Chicken",emoji:"🍚",timing:"2–3 hrs",kcal:400,items:["150g white rice","100g chicken breast","light sauce"],why:"Lean protein + fast carbs. Low fat = easy digestion before intensity."},
+      {name:"Bagel + Cream Cheese + Banana",emoji:"🥯",timing:"90 min",kcal:380,items:["1 bagel","1 tbsp cream cheese","1 banana"],why:"If time is short: high-GI carbs hit fast. Reliable."},
+      {name:"Overnight Oats",emoji:"🌾",timing:"2 hrs",kcal:420,items:["80g oats","300ml milk","banana","honey"],why:"Prep the night before. Slow-release base + quick banana carbs."},
+      {name:"Toast + Eggs + OJ",emoji:"🍳",timing:"2 hrs",kcal:360,items:["2 slices sourdough","2 eggs","200ml OJ"],why:"OJ tops up blood glucose 30–60 min into the interval session."},
+    ],avoid:["High-fat meals (cramp risk)","Excess fibre","Alcohol the night before","Fasting into the session","Untested foods"]},
+  tempo:{window:"90 min – 2.5 hrs before",goal:"Fuelled but not full. A heavy gut at threshold pace will cost you.",
+    meals:[
+      {name:"Toast + PB + Banana",emoji:"🍞",timing:"90 min",kcal:380,items:["2 slices wholegrain toast","1.5 tbsp peanut butter","1 banana"],why:"Carbs + protein + fat. Sustains 45–60 min of threshold effort."},
+      {name:"Bagel + Jam",emoji:"🥯",timing:"60–90 min",kcal:310,items:["1 bagel","2 tbsp jam"],why:"High-GI, low-fat hit. Fast absorption, steady energy."},
+      {name:"Overnight Oats (small)",emoji:"🌾",timing:"2 hrs",kcal:280,items:["50g oats","200ml milk","berries"],why:"Smaller portion = fully digested by tempo time."},
+      {name:"Rice Cakes + Banana + Gel",emoji:"🍚",timing:"60 min",kcal:280,items:["3 rice cakes","1 banana","1 gel in pocket"],why:"Light but fuelled. Gel in pocket for longer tempos."},
+      {name:"Banana + Energy Chews",emoji:"🍌",timing:"45 min",kcal:220,items:["1 banana","1 pack Clif Bloks"],why:"Emergency when time is very tight before a tempo."},
+    ],avoid:["Large portions","High fat/protein meals","Fizzy drinks","New foods","Eating within 45 min if GI-sensitive"]},
+  midweek_long:{window:"2–3 hrs before",goal:"Well-fuelled, not stuffed. Similar to long run but slightly lower urgency.",
+    meals:[
+      {name:"Porridge + Banana + Honey",emoji:"🌾",timing:"2 hrs",kcal:400,items:["70g oats","300ml milk","1 banana","1 tbsp honey"],why:"The classic. Reliable, tested, easy to digest every time."},
+      {name:"Toast + Eggs + Fruit",emoji:"🍳",timing:"2 hrs",kcal:360,items:["2 slices toast","2 eggs","small fruit portion"],why:"Protein slows glucose release for sustained energy across the run."},
+      {name:"White Rice + Chicken Bowl",emoji:"🍚",timing:"2.5 hrs",kcal:390,items:["150g white rice","100g chicken","light sauce"],why:"For lunchtime or late morning runs — full but lean pre-run plate."},
+      {name:"Granola + Yogurt + Berries",emoji:"🥣",timing:"90 min",kcal:310,items:["50g granola","150g low-fat yogurt","berries"],why:"Light and palatable when appetite is low early morning."},
+      {name:"Energy Bar + Banana",emoji:"🍫",timing:"45 min",kcal:350,items:["1 Clif Bar","1 banana"],why:"Backup when prep time is short. Familiar and reliable."},
+    ],avoid:["Spicy food the night before","High-fat meals","Excess dairy","Eating within 60 min of running"]},
+  long:{window:"2.5–3 hrs before (non-negotiable)",goal:"Maximum glycogen loading. You burn 500–900 kcal/hr — you cannot out-fuel a poor pre-run meal.",
+    meals:[
+      {name:"Porridge + Banana + PB",emoji:"🌾",timing:"2.5–3 hrs",kcal:520,items:["80g oats","350ml milk","1 large banana","1 tbsp honey","1 tbsp PB"],why:"The long run gold standard. Slow-release base + fast banana. Trusted by thousands."},
+      {name:"Bagels + PB + Banana + OJ",emoji:"🥯",timing:"2 hrs",kcal:600,items:["2 bagels","2 tbsp PB","1 banana","200ml OJ"],why:"High-GI carbs, easy to digest. OJ tops up glucose early in the run."},
+      {name:"White Rice + Eggs + Toast",emoji:"🍚",timing:"2.5 hrs",kcal:460,items:["150g white rice","2 eggs","1 slice toast","honey"],why:"Savoury option. Rice is the most glycogen-dense carb source."},
+      {name:"Pasta (night before)",emoji:"🍝",timing:"Night before",kcal:580,items:["200g pasta","light sauce","small chicken portion"],why:"Pre-load the night before to start with full liver glycogen."},
+      {name:"Banana + 2 Gels (emergency)",emoji:"🍌",timing:"45 min",kcal:300,items:["1 banana","2 energy gels","electrolyte drink"],why:"If you slept in: emergency fuel. Not ideal but will do."},
+    ],avoid:["High-fibre foods (bran, brown rice)","Excess fat/protein","Dairy if lactose-sensitive","Alcohol night before","Skipping food entirely","Anything untested"]},
+  rest:{window:"No pre-run fuel needed",goal:"Rest days need no pre-run nutrition. Focus on quality daily eating and recovery foods.",
+    meals:[
+      {name:"Normal Balanced Meal",emoji:"🌿",timing:"Any time",kcal:0,items:["Protein source","Complex carbs","Plenty of veg","Healthy fats"],why:"No specific timing. Just eat well and consistently on rest days."},
+    ],avoid:[]},
+};
+
+// ─── POST-RUN MEALS ───────────────────────────────────────────────────────────
 const MEALS={
   easy:[
-    {name:"Greek Yogurt Bowl",emoji:"🥣",baseKcal:320,recipe:"https://www.bbcgoodfood.com/recipes/greek-yogurt-with-oats-honey",
-     why:"Casein protein supports overnight repair. Banana carbs restore light glycogen gently.",
-     ingredients:[
-       {label:"Greek yogurt",base:200,unit:"g",scale:true,kcalPer100:97},
-       {label:"Banana",base:1,unit:"",scale:false,kcalEach:89},
-       {label:"Honey",base:1,unit:"tbsp",scale:false,kcalEach:64},
-       {label:"Granola",base:30,unit:"g",scale:true,kcalPer100:471},
-       {label:"Chia seeds",base:10,unit:"g",scale:false,kcalPer100:486},
-     ]},
-    {name:"Peanut Butter Toast",emoji:"🍞",baseKcal:420,recipe:"https://www.bbcgoodfood.com/recipes/peanut-butter-banana-toast",
-     why:"Complex carbs + healthy fats + protein. Light and quick on the gut after easy efforts.",
-     ingredients:[
-       {label:"Wholegrain toast",base:2,unit:"slices",scale:false,kcalEach:80},
-       {label:"Peanut butter",base:2,unit:"tbsp",scale:true,kcalEach:96},
-       {label:"Banana",base:1,unit:"",scale:false,kcalEach:89},
-       {label:"Honey",base:1,unit:"tsp",scale:false,kcalEach:21},
-     ]},
-    {name:"Recovery Smoothie",emoji:"🥤",baseKcal:360,recipe:"https://www.bbcgoodfood.com/recipes/post-workout-recovery-smoothie",
-     why:"Liquid nutrition absorbs fast. Antioxidants from berries combat post-run inflammation.",
-     ingredients:[
-       {label:"Oat milk",base:300,unit:"ml",scale:true,kcalPer100:45},
-       {label:"Banana",base:1,unit:"",scale:false,kcalEach:89},
-       {label:"Protein powder",base:30,unit:"g",scale:true,kcalPer100:380},
-       {label:"Frozen berries",base:80,unit:"g",scale:false,kcalPer100:50},
-       {label:"Flaxseed",base:10,unit:"g",scale:false,kcalPer100:534},
-     ]},
-    {name:"Poached Eggs on Toast",emoji:"🍳",baseKcal:400,recipe:"https://www.bbcgoodfood.com/recipes/classic-poached-eggs",
-     why:"Complete amino acids from eggs. B vitamins support energy metabolism. Avocado provides vitamin E.",
-     ingredients:[
-       {label:"Eggs",base:2,unit:"",scale:true,kcalEach:78},
-       {label:"Sourdough bread",base:2,unit:"slices",scale:false,kcalEach:90},
-       {label:"Avocado",base:.5,unit:"",scale:true,kcalEach:160},
-       {label:"Chilli flakes",base:1,unit:"pinch",scale:false,kcalEach:0},
-     ]},
-    {name:"Cottage Cheese & Fruit",emoji:"🍑",baseKcal:300,recipe:"https://www.eatingwell.com/recipe/252069/cottage-cheese-with-fruit/",
-     why:"High in leucine — the key amino acid that triggers muscle protein synthesis post-run.",
-     ingredients:[
-       {label:"Cottage cheese",base:200,unit:"g",scale:true,kcalPer100:98},
-       {label:"Mixed berries",base:80,unit:"g",scale:false,kcalPer100:50},
-       {label:"Honey",base:1,unit:"tbsp",scale:false,kcalEach:64},
-       {label:"Walnuts",base:20,unit:"g",scale:true,kcalPer100:654},
-     ]},
+    {name:"Greek Yogurt Bowl",emoji:"🥣",baseKcal:320,recipe:"https://www.bbcgoodfood.com/recipes/greek-yogurt-with-oats-honey",why:"Casein protein supports overnight repair. Banana carbs restore light glycogen gently.",ingredients:[{label:"Greek yogurt",base:200,unit:"g",scale:true,kcalPer100:97},{label:"Banana",base:1,unit:"",scale:false,kcalEach:89},{label:"Honey",base:1,unit:"tbsp",scale:false,kcalEach:64},{label:"Granola",base:30,unit:"g",scale:true,kcalPer100:471},{label:"Chia seeds",base:10,unit:"g",scale:false,kcalPer100:486}]},
+    {name:"Peanut Butter Toast",emoji:"🍞",baseKcal:420,recipe:"https://www.bbcgoodfood.com/recipes/peanut-butter-banana-toast",why:"Complex carbs + healthy fats + protein. Light and quick on the gut after easy efforts.",ingredients:[{label:"Wholegrain toast",base:2,unit:"slices",scale:false,kcalEach:80},{label:"Peanut butter",base:2,unit:"tbsp",scale:true,kcalEach:96},{label:"Banana",base:1,unit:"",scale:false,kcalEach:89},{label:"Honey",base:1,unit:"tsp",scale:false,kcalEach:21}]},
+    {name:"Recovery Smoothie",emoji:"🥤",baseKcal:360,recipe:"https://www.bbcgoodfood.com/recipes/post-workout-recovery-smoothie",why:"Liquid nutrition absorbs fast. Antioxidants from berries combat post-run inflammation.",ingredients:[{label:"Oat milk",base:300,unit:"ml",scale:true,kcalPer100:45},{label:"Banana",base:1,unit:"",scale:false,kcalEach:89},{label:"Protein powder",base:30,unit:"g",scale:true,kcalPer100:380},{label:"Frozen berries",base:80,unit:"g",scale:false,kcalPer100:50},{label:"Flaxseed",base:10,unit:"g",scale:false,kcalPer100:534}]},
+    {name:"Poached Eggs on Toast",emoji:"🍳",baseKcal:400,recipe:"https://www.bbcgoodfood.com/recipes/classic-poached-eggs",why:"Complete amino acids from eggs. B vitamins support energy metabolism. Avocado provides vitamin E.",ingredients:[{label:"Eggs",base:2,unit:"",scale:true,kcalEach:78},{label:"Sourdough bread",base:2,unit:"slices",scale:false,kcalEach:90},{label:"Avocado",base:.5,unit:"",scale:true,kcalEach:160},{label:"Chilli flakes",base:1,unit:"pinch",scale:false,kcalEach:0}]},
+    {name:"Cottage Cheese & Fruit",emoji:"🍑",baseKcal:300,recipe:"https://www.eatingwell.com/recipe/252069/cottage-cheese-with-fruit/",why:"High in leucine — the key amino acid that triggers muscle protein synthesis post-run.",ingredients:[{label:"Cottage cheese",base:200,unit:"g",scale:true,kcalPer100:98},{label:"Mixed berries",base:80,unit:"g",scale:false,kcalPer100:50},{label:"Honey",base:1,unit:"tbsp",scale:false,kcalEach:64},{label:"Walnuts",base:20,unit:"g",scale:true,kcalPer100:654}]},
   ],
   interval:[
-    {name:"Rice Cakes + Smoked Salmon",emoji:"🍱",baseKcal:380,recipe:"https://www.bbcgoodfood.com/recipes/smoked-salmon-avocado-rice-cakes",
-     why:"Fast-absorbing carbs, omega-3 rich complete protein. Anti-inflammatory after intense efforts.",
-     ingredients:[
-       {label:"Rice cakes",base:4,unit:"",scale:true,kcalEach:35},
-       {label:"Smoked salmon",base:120,unit:"g",scale:true,kcalPer100:142},
-       {label:"Avocado",base:.5,unit:"",scale:true,kcalEach:160},
-       {label:"Cucumber",base:60,unit:"g",scale:false,kcalPer100:16},
-     ]},
-    {name:"Chocolate Milk + Bananas",emoji:"🍫",baseKcal:490,recipe:"https://www.runnersworld.com/nutrition/a20851329/chocolate-milk-as-a-recovery-drink/",
-     why:"Clinical 3:1 carb:protein recovery combo. Electrolytes, fast absorption, zero prep.",
-     ingredients:[
-       {label:"Chocolate milk",base:500,unit:"ml",scale:true,kcalPer100:70},
-       {label:"Bananas",base:2,unit:"",scale:true,kcalEach:89},
-     ]},
-    {name:"Chicken Pasta",emoji:"🍝",baseKcal:550,recipe:"https://www.bbcgoodfood.com/recipes/chicken-tomato-pasta",
-     why:"High-carb reload for severe glycogen depletion. Chicken initiates muscle protein synthesis.",
-     ingredients:[
-       {label:"Cooked pasta",base:150,unit:"g",scale:true,kcalPer100:158},
-       {label:"Grilled chicken",base:120,unit:"g",scale:true,kcalPer100:165},
-       {label:"Tomato sauce",base:80,unit:"g",scale:true,kcalPer100:32},
-       {label:"Parmesan",base:15,unit:"g",scale:false,kcalPer100:431},
-     ]},
-    {name:"Protein Pancakes",emoji:"🥞",baseKcal:480,recipe:"https://www.bbcgoodfood.com/recipes/protein-pancakes",
-     why:"High protein, fast-acting carbs. Easy to digest. Great if you train in the morning.",
-     ingredients:[
-       {label:"Protein powder",base:30,unit:"g",scale:true,kcalPer100:380},
-       {label:"Banana",base:1,unit:"",scale:false,kcalEach:89},
-       {label:"Eggs",base:2,unit:"",scale:true,kcalEach:78},
-       {label:"Oats",base:50,unit:"g",scale:true,kcalPer100:389},
-       {label:"Greek yogurt topping",base:100,unit:"g",scale:true,kcalPer100:97},
-     ]},
-    {name:"Burrito Bowl",emoji:"🌯",baseKcal:580,recipe:"https://www.bbcgoodfood.com/recipes/chicken-burrito-bowl",
-     why:"Carbs from rice + beans, complete protein from chicken. Salsa replaces electrolytes lost sweating.",
-     ingredients:[
-       {label:"Cooked rice",base:150,unit:"g",scale:true,kcalPer100:130},
-       {label:"Chicken breast",base:100,unit:"g",scale:true,kcalPer100:165},
-       {label:"Black beans",base:80,unit:"g",scale:true,kcalPer100:132},
-       {label:"Guacamole",base:40,unit:"g",scale:false,kcalPer100:160},
-       {label:"Salsa",base:30,unit:"g",scale:false,kcalPer100:36},
-     ]},
+    {name:"Rice Cakes + Smoked Salmon",emoji:"🍱",baseKcal:380,recipe:"https://www.bbcgoodfood.com/recipes/smoked-salmon-avocado-rice-cakes",why:"Fast-absorbing carbs, omega-3 rich complete protein. Anti-inflammatory after intense efforts.",ingredients:[{label:"Rice cakes",base:4,unit:"",scale:true,kcalEach:35},{label:"Smoked salmon",base:120,unit:"g",scale:true,kcalPer100:142},{label:"Avocado",base:.5,unit:"",scale:true,kcalEach:160},{label:"Cucumber",base:60,unit:"g",scale:false,kcalPer100:16}]},
+    {name:"Chocolate Milk + Bananas",emoji:"🍫",baseKcal:490,recipe:"https://www.runnersworld.com/nutrition/a20851329/chocolate-milk-as-a-recovery-drink/",why:"Clinical 3:1 carb:protein recovery combo. Electrolytes, fast absorption, zero prep.",ingredients:[{label:"Chocolate milk",base:500,unit:"ml",scale:true,kcalPer100:70},{label:"Bananas",base:2,unit:"",scale:true,kcalEach:89}]},
+    {name:"Chicken Pasta",emoji:"🍝",baseKcal:550,recipe:"https://www.bbcgoodfood.com/recipes/chicken-tomato-pasta",why:"High-carb reload for severe glycogen depletion. Chicken initiates muscle protein synthesis.",ingredients:[{label:"Cooked pasta",base:150,unit:"g",scale:true,kcalPer100:158},{label:"Grilled chicken",base:120,unit:"g",scale:true,kcalPer100:165},{label:"Tomato sauce",base:80,unit:"g",scale:true,kcalPer100:32},{label:"Parmesan",base:15,unit:"g",scale:false,kcalPer100:431}]},
+    {name:"Protein Pancakes",emoji:"🥞",baseKcal:480,recipe:"https://www.bbcgoodfood.com/recipes/protein-pancakes",why:"High protein, fast-acting carbs. Easy to digest. Great if you train in the morning.",ingredients:[{label:"Protein powder",base:30,unit:"g",scale:true,kcalPer100:380},{label:"Banana",base:1,unit:"",scale:false,kcalEach:89},{label:"Eggs",base:2,unit:"",scale:true,kcalEach:78},{label:"Oats",base:50,unit:"g",scale:true,kcalPer100:389},{label:"Greek yogurt topping",base:100,unit:"g",scale:true,kcalPer100:97}]},
+    {name:"Burrito Bowl",emoji:"🌯",baseKcal:580,recipe:"https://www.bbcgoodfood.com/recipes/chicken-burrito-bowl",why:"Carbs from rice + beans, complete protein from chicken. Salsa replaces electrolytes lost sweating.",ingredients:[{label:"Cooked rice",base:150,unit:"g",scale:true,kcalPer100:130},{label:"Chicken breast",base:100,unit:"g",scale:true,kcalPer100:165},{label:"Black beans",base:80,unit:"g",scale:true,kcalPer100:132},{label:"Guacamole",base:40,unit:"g",scale:false,kcalPer100:160},{label:"Salsa",base:30,unit:"g",scale:false,kcalPer100:36}]},
   ],
   tempo:[
-    {name:"Scrambled Eggs on Sourdough",emoji:"🍳",baseKcal:440,recipe:"https://www.bbcgoodfood.com/recipes/scrambled-eggs-smoked-salmon-toast",
-     why:"All 9 essential amino acids. Sourdough has better gut tolerance. Vitamin C from fruit aids iron absorption.",
-     ingredients:[
-       {label:"Eggs",base:3,unit:"",scale:true,kcalEach:78},
-       {label:"Sourdough bread",base:2,unit:"slices",scale:true,kcalEach:90},
-       {label:"Berries or orange",base:100,unit:"g",scale:false,kcalPer100:52},
-       {label:"Butter",base:10,unit:"g",scale:false,kcalPer100:717},
-     ]},
-    {name:"Sweet Potato + Cottage Cheese",emoji:"🍠",baseKcal:380,recipe:"https://www.bbcgoodfood.com/recipes/baked-sweet-potato-cottage-cheese",
-     why:"Sweet potato is a glycogen-replenishing powerhouse. Cottage cheese leucine triggers muscle synthesis.",
-     ingredients:[
-       {label:"Sweet potato",base:200,unit:"g",scale:true,kcalPer100:86},
-       {label:"Cottage cheese",base:150,unit:"g",scale:true,kcalPer100:98},
-       {label:"Olive oil",base:1,unit:"tsp",scale:false,kcalEach:40},
-       {label:"Paprika",base:1,unit:"pinch",scale:false,kcalEach:0},
-     ]},
-    {name:"Tuna Avocado Wrap",emoji:"🌯",baseKcal:430,recipe:"https://www.bbcgoodfood.com/recipes/tuna-avocado-wrap",
-     why:"Lean complete protein from tuna. Avocado's monounsaturated fats reduce post-tempo inflammation.",
-     ingredients:[
-       {label:"Large tortilla",base:1,unit:"",scale:false,kcalEach:220},
-       {label:"Tuna (drained)",base:120,unit:"g",scale:true,kcalPer100:109},
-       {label:"Avocado",base:.5,unit:"",scale:true,kcalEach:160},
-       {label:"Spinach",base:30,unit:"g",scale:false,kcalPer100:23},
-     ]},
-    {name:"Overnight Oats",emoji:"🌾",baseKcal:460,recipe:"https://www.bbcgoodfood.com/recipes/overnight-oats",
-     why:"Beta-glucan in oats reduces inflammation. Slow-release carbs restore glycogen without blood sugar spikes.",
-     ingredients:[
-       {label:"Rolled oats",base:80,unit:"g",scale:true,kcalPer100:389},
-       {label:"Milk",base:300,unit:"ml",scale:true,kcalPer100:61},
-       {label:"Protein powder",base:25,unit:"g",scale:true,kcalPer100:380},
-       {label:"Mixed berries",base:80,unit:"g",scale:false,kcalPer100:50},
-       {label:"Almond butter",base:15,unit:"g",scale:true,kcalPer100:614},
-     ]},
-    {name:"Salmon Rice Bowl",emoji:"🍚",baseKcal:500,recipe:"https://www.bbcgoodfood.com/recipes/salmon-rice-bowl",
-     why:"Omega-3s from salmon reduce LT-related muscle damage. White rice is the gold-standard post-run carb.",
-     ingredients:[
-       {label:"Salmon fillet",base:150,unit:"g",scale:true,kcalPer100:208},
-       {label:"Cooked white rice",base:150,unit:"g",scale:true,kcalPer100:130},
-       {label:"Edamame",base:60,unit:"g",scale:false,kcalPer100:121},
-       {label:"Sesame seeds",base:10,unit:"g",scale:false,kcalPer100:573},
-     ]},
+    {name:"Scrambled Eggs on Sourdough",emoji:"🍳",baseKcal:440,recipe:"https://www.bbcgoodfood.com/recipes/scrambled-eggs-smoked-salmon-toast",why:"All 9 essential amino acids. Sourdough has better gut tolerance. Vitamin C from fruit aids iron absorption.",ingredients:[{label:"Eggs",base:3,unit:"",scale:true,kcalEach:78},{label:"Sourdough bread",base:2,unit:"slices",scale:true,kcalEach:90},{label:"Berries or orange",base:100,unit:"g",scale:false,kcalPer100:52},{label:"Butter",base:10,unit:"g",scale:false,kcalPer100:717}]},
+    {name:"Sweet Potato + Cottage Cheese",emoji:"🍠",baseKcal:380,recipe:"https://www.bbcgoodfood.com/recipes/baked-sweet-potato-cottage-cheese",why:"Sweet potato is a glycogen-replenishing powerhouse. Cottage cheese leucine triggers muscle synthesis.",ingredients:[{label:"Sweet potato",base:200,unit:"g",scale:true,kcalPer100:86},{label:"Cottage cheese",base:150,unit:"g",scale:true,kcalPer100:98},{label:"Olive oil",base:1,unit:"tsp",scale:false,kcalEach:40},{label:"Paprika",base:1,unit:"pinch",scale:false,kcalEach:0}]},
+    {name:"Tuna Avocado Wrap",emoji:"🌯",baseKcal:430,recipe:"https://www.bbcgoodfood.com/recipes/tuna-avocado-wrap",why:"Lean complete protein from tuna. Avocado's monounsaturated fats reduce post-tempo inflammation.",ingredients:[{label:"Large tortilla",base:1,unit:"",scale:false,kcalEach:220},{label:"Tuna (drained)",base:120,unit:"g",scale:true,kcalPer100:109},{label:"Avocado",base:.5,unit:"",scale:true,kcalEach:160},{label:"Spinach",base:30,unit:"g",scale:false,kcalPer100:23}]},
+    {name:"Overnight Oats",emoji:"🌾",baseKcal:460,recipe:"https://www.bbcgoodfood.com/recipes/overnight-oats",why:"Beta-glucan in oats reduces inflammation. Slow-release carbs restore glycogen without blood sugar spikes.",ingredients:[{label:"Rolled oats",base:80,unit:"g",scale:true,kcalPer100:389},{label:"Milk",base:300,unit:"ml",scale:true,kcalPer100:61},{label:"Protein powder",base:25,unit:"g",scale:true,kcalPer100:380},{label:"Mixed berries",base:80,unit:"g",scale:false,kcalPer100:50},{label:"Almond butter",base:15,unit:"g",scale:true,kcalPer100:614}]},
+    {name:"Salmon Rice Bowl",emoji:"🍚",baseKcal:500,recipe:"https://www.bbcgoodfood.com/recipes/salmon-rice-bowl",why:"Omega-3s from salmon reduce LT-related muscle damage. White rice is the gold-standard post-run carb.",ingredients:[{label:"Salmon fillet",base:150,unit:"g",scale:true,kcalPer100:208},{label:"Cooked white rice",base:150,unit:"g",scale:true,kcalPer100:130},{label:"Edamame",base:60,unit:"g",scale:false,kcalPer100:121},{label:"Sesame seeds",base:10,unit:"g",scale:false,kcalPer100:573}]},
   ],
   midweek_long:[
-    {name:"Porridge + Boiled Eggs",emoji:"🌾",baseKcal:490,recipe:"https://www.bbcgoodfood.com/recipes/porridge",
-     why:"Oats slowly restore glycogen. Eggs repair muscle fibre. Chia seeds add omega-3s for the next session.",
-     ingredients:[
-       {label:"Rolled oats",base:80,unit:"g",scale:true,kcalPer100:389},
-       {label:"Milk",base:300,unit:"ml",scale:true,kcalPer100:61},
-       {label:"Boiled eggs",base:2,unit:"",scale:true,kcalEach:78},
-       {label:"Banana",base:1,unit:"",scale:false,kcalEach:89},
-       {label:"Chia seeds",base:10,unit:"g",scale:false,kcalPer100:486},
-     ]},
-    {name:"Chicken Rice Bowl",emoji:"🍚",baseKcal:580,recipe:"https://www.bbcgoodfood.com/recipes/chicken-rice-bowl",
-     why:"High-carb base, iron-rich chicken thighs, colourful veg for micronutrients.",
-     ingredients:[
-       {label:"Chicken thigh",base:180,unit:"g",scale:true,kcalPer100:177},
-       {label:"Jasmine rice",base:150,unit:"g",scale:true,kcalPer100:130},
-       {label:"Roasted veg",base:100,unit:"g",scale:false,kcalPer100:45},
-       {label:"Tahini dressing",base:15,unit:"g",scale:false,kcalPer100:595},
-     ]},
-    {name:"Smoked Salmon Bagel",emoji:"🥯",baseKcal:500,recipe:"https://www.bbcgoodfood.com/recipes/smoked-salmon-bagel",
-     why:"High-GI bagel for rapid glycogen reload. Salmon omega-3s reduce inflammation from volume running.",
-     ingredients:[
-       {label:"Sesame bagel",base:1,unit:"",scale:false,kcalEach:270},
-       {label:"Smoked salmon",base:100,unit:"g",scale:true,kcalPer100:142},
-       {label:"Cream cheese",base:30,unit:"g",scale:true,kcalPer100:342},
-       {label:"Capers + red onion",base:20,unit:"g",scale:false,kcalPer100:23},
-     ]},
-    {name:"Turkey & Quinoa Salad",emoji:"🥗",baseKcal:460,recipe:"https://www.bbcgoodfood.com/recipes/quinoa-turkey-salad",
-     why:"Quinoa is a complete protein grain. Turkey is lean with low saturated fat for clean recovery.",
-     ingredients:[
-       {label:"Turkey breast",base:120,unit:"g",scale:true,kcalPer100:135},
-       {label:"Cooked quinoa",base:100,unit:"g",scale:true,kcalPer100:120},
-       {label:"Roasted peppers",base:80,unit:"g",scale:false,kcalPer100:31},
-       {label:"Feta cheese",base:30,unit:"g",scale:false,kcalPer100:264},
-     ]},
-    {name:"Beef Stir Fry + Noodles",emoji:"🥩",baseKcal:540,recipe:"https://www.bbcgoodfood.com/recipes/beef-vegetable-stir-fry",
-     why:"Red meat replenishes iron depleted by foot-strike haemolysis. Zinc from beef speeds tissue repair.",
-     ingredients:[
-       {label:"Lean beef strips",base:150,unit:"g",scale:true,kcalPer100:198},
-       {label:"Rice noodles",base:100,unit:"g",scale:true,kcalPer100:109},
-       {label:"Stir-fry veg",base:120,unit:"g",scale:false,kcalPer100:35},
-       {label:"Tamari sauce",base:15,unit:"ml",scale:false,kcalPer100:60},
-     ]},
+    {name:"Porridge + Boiled Eggs",emoji:"🌾",baseKcal:490,recipe:"https://www.bbcgoodfood.com/recipes/porridge",why:"Oats slowly restore glycogen. Eggs repair muscle fibre. Chia seeds add omega-3s for the next session.",ingredients:[{label:"Rolled oats",base:80,unit:"g",scale:true,kcalPer100:389},{label:"Milk",base:300,unit:"ml",scale:true,kcalPer100:61},{label:"Boiled eggs",base:2,unit:"",scale:true,kcalEach:78},{label:"Banana",base:1,unit:"",scale:false,kcalEach:89},{label:"Chia seeds",base:10,unit:"g",scale:false,kcalPer100:486}]},
+    {name:"Chicken Rice Bowl",emoji:"🍚",baseKcal:580,recipe:"https://www.bbcgoodfood.com/recipes/chicken-rice-bowl",why:"High-carb base, iron-rich chicken thighs, colourful veg for micronutrients.",ingredients:[{label:"Chicken thigh",base:180,unit:"g",scale:true,kcalPer100:177},{label:"Jasmine rice",base:150,unit:"g",scale:true,kcalPer100:130},{label:"Roasted veg",base:100,unit:"g",scale:false,kcalPer100:45},{label:"Tahini dressing",base:15,unit:"g",scale:false,kcalPer100:595}]},
+    {name:"Smoked Salmon Bagel",emoji:"🥯",baseKcal:500,recipe:"https://www.bbcgoodfood.com/recipes/smoked-salmon-bagel",why:"High-GI bagel for rapid glycogen reload. Salmon omega-3s reduce inflammation from volume running.",ingredients:[{label:"Sesame bagel",base:1,unit:"",scale:false,kcalEach:270},{label:"Smoked salmon",base:100,unit:"g",scale:true,kcalPer100:142},{label:"Cream cheese",base:30,unit:"g",scale:true,kcalPer100:342},{label:"Capers + red onion",base:20,unit:"g",scale:false,kcalPer100:23}]},
+    {name:"Turkey & Quinoa Salad",emoji:"🥗",baseKcal:460,recipe:"https://www.bbcgoodfood.com/recipes/quinoa-turkey-salad",why:"Quinoa is a complete protein grain. Turkey is lean with low saturated fat for clean recovery.",ingredients:[{label:"Turkey breast",base:120,unit:"g",scale:true,kcalPer100:135},{label:"Cooked quinoa",base:100,unit:"g",scale:true,kcalPer100:120},{label:"Roasted peppers",base:80,unit:"g",scale:false,kcalPer100:31},{label:"Feta cheese",base:30,unit:"g",scale:false,kcalPer100:264}]},
+    {name:"Beef Stir Fry + Noodles",emoji:"🥩",baseKcal:540,recipe:"https://www.bbcgoodfood.com/recipes/beef-vegetable-stir-fry",why:"Red meat replenishes iron depleted by foot-strike haemolysis. Zinc from beef speeds tissue repair.",ingredients:[{label:"Lean beef strips",base:150,unit:"g",scale:true,kcalPer100:198},{label:"Rice noodles",base:100,unit:"g",scale:true,kcalPer100:109},{label:"Stir-fry veg",base:120,unit:"g",scale:false,kcalPer100:35},{label:"Tamari sauce",base:15,unit:"ml",scale:false,kcalPer100:60}]},
   ],
   long:[
-    {name:"Immediate Recovery Shake",emoji:"🔋",baseKcal:470,recipe:"https://www.runnersworld.com/nutrition/a20851329/chocolate-milk-as-a-recovery-drink/",
-     why:"Liquid carbs + protein hit the bloodstream fastest. The 20-min window is critical — don't wait.",
-     ingredients:[
-       {label:"Chocolate milk",base:500,unit:"ml",scale:true,kcalPer100:70},
-       {label:"Bananas",base:2,unit:"",scale:true,kcalEach:89},
-       {label:"Electrolyte tablet",base:1,unit:"",scale:false,kcalEach:10},
-     ]},
-    {name:"Pasta + Salmon",emoji:"🍝",baseKcal:620,recipe:"https://www.bbcgoodfood.com/recipes/salmon-pasta",
-     why:"Carbs restore glycogen. Salmon omega-3s combat oxidative stress from long runs. Spinach = iron.",
-     ingredients:[
-       {label:"Penne pasta",base:200,unit:"g",scale:true,kcalPer100:158},
-       {label:"Salmon fillet",base:150,unit:"g",scale:true,kcalPer100:208},
-       {label:"Spinach",base:60,unit:"g",scale:false,kcalPer100:23},
-       {label:"Olive oil",base:10,unit:"ml",scale:false,kcalPer100:884},
-       {label:"Parmesan",base:20,unit:"g",scale:false,kcalPer100:431},
-     ]},
-    {name:"Slow Cooker Beef Stew",emoji:"🥘",baseKcal:580,recipe:"https://www.bbcgoodfood.com/recipes/slow-cooker-beef-stew",
-     why:"Muscle damage continues 24–48hrs. Casein + iron from beef sustains overnight repair.",
-     ingredients:[
-       {label:"Beef or lentils",base:200,unit:"g",scale:true,kcalPer100:198},
-       {label:"Sweet potato",base:150,unit:"g",scale:true,kcalPer100:86},
-       {label:"Kale",base:60,unit:"g",scale:false,kcalPer100:35},
-       {label:"Bone broth",base:200,unit:"ml",scale:false,kcalPer100:10},
-     ]},
-    {name:"Roast Chicken + Rice + Veg",emoji:"🍗",baseKcal:640,recipe:"https://www.bbcgoodfood.com/recipes/roast-chicken-thighs-vegetables",
-     why:"Chicken thighs beat breast for iron and zinc. A complete, easily digestible recovery plate.",
-     ingredients:[
-       {label:"White rice",base:200,unit:"g",scale:true,kcalPer100:130},
-       {label:"Chicken thighs",base:180,unit:"g",scale:true,kcalPer100:177},
-       {label:"Sweet potato",base:120,unit:"g",scale:true,kcalPer100:86},
-       {label:"Broccoli",base:80,unit:"g",scale:false,kcalPer100:34},
-     ]},
-    {name:"Full Recovery Plate",emoji:"🍽️",baseKcal:560,recipe:"https://www.bbcgoodfood.com/recipes/full-english-breakfast",
-     why:"High protein + carbs, sodium from eggs, easily digestible. The classic post-long-run British plate.",
-     ingredients:[
-       {label:"Eggs",base:3,unit:"",scale:true,kcalEach:78},
-       {label:"Wholegrain toast",base:2,unit:"slices",scale:true,kcalEach:80},
-       {label:"Baked beans",base:200,unit:"g",scale:true,kcalPer100:94},
-       {label:"Mushrooms",base:80,unit:"g",scale:false,kcalPer100:22},
-       {label:"Grilled tomatoes",base:100,unit:"g",scale:false,kcalPer100:18},
-     ]},
+    {name:"Immediate Recovery Shake",emoji:"🔋",baseKcal:470,recipe:"https://www.runnersworld.com/nutrition/a20851329/chocolate-milk-as-a-recovery-drink/",why:"Liquid carbs + protein hit the bloodstream fastest. The 20-min window is critical — don't wait.",ingredients:[{label:"Chocolate milk",base:500,unit:"ml",scale:true,kcalPer100:70},{label:"Bananas",base:2,unit:"",scale:true,kcalEach:89},{label:"Electrolyte tablet",base:1,unit:"",scale:false,kcalEach:10}]},
+    {name:"Pasta + Salmon",emoji:"🍝",baseKcal:620,recipe:"https://www.bbcgoodfood.com/recipes/salmon-pasta",why:"Carbs restore glycogen. Salmon omega-3s combat oxidative stress from long runs. Spinach = iron.",ingredients:[{label:"Penne pasta",base:200,unit:"g",scale:true,kcalPer100:158},{label:"Salmon fillet",base:150,unit:"g",scale:true,kcalPer100:208},{label:"Spinach",base:60,unit:"g",scale:false,kcalPer100:23},{label:"Olive oil",base:10,unit:"ml",scale:false,kcalPer100:884},{label:"Parmesan",base:20,unit:"g",scale:false,kcalPer100:431}]},
+    {name:"Slow Cooker Beef Stew",emoji:"🥘",baseKcal:580,recipe:"https://www.bbcgoodfood.com/recipes/slow-cooker-beef-stew",why:"Muscle damage continues 24–48hrs. Casein + iron from beef sustains overnight repair.",ingredients:[{label:"Beef or lentils",base:200,unit:"g",scale:true,kcalPer100:198},{label:"Sweet potato",base:150,unit:"g",scale:true,kcalPer100:86},{label:"Kale",base:60,unit:"g",scale:false,kcalPer100:35},{label:"Bone broth",base:200,unit:"ml",scale:false,kcalPer100:10}]},
+    {name:"Roast Chicken + Rice + Veg",emoji:"🍗",baseKcal:640,recipe:"https://www.bbcgoodfood.com/recipes/roast-chicken-thighs-vegetables",why:"Chicken thighs beat breast for iron and zinc. A complete, easily digestible recovery plate.",ingredients:[{label:"White rice",base:200,unit:"g",scale:true,kcalPer100:130},{label:"Chicken thighs",base:180,unit:"g",scale:true,kcalPer100:177},{label:"Sweet potato",base:120,unit:"g",scale:true,kcalPer100:86},{label:"Broccoli",base:80,unit:"g",scale:false,kcalPer100:34}]},
+    {name:"Full Recovery Plate",emoji:"🍽️",baseKcal:560,recipe:"https://www.bbcgoodfood.com/recipes/full-english-breakfast",why:"High protein + carbs, sodium from eggs, easily digestible. The classic post-long-run British plate.",ingredients:[{label:"Eggs",base:3,unit:"",scale:true,kcalEach:78},{label:"Wholegrain toast",base:2,unit:"slices",scale:true,kcalEach:80},{label:"Baked beans",base:200,unit:"g",scale:true,kcalPer100:94},{label:"Mushrooms",base:80,unit:"g",scale:false,kcalPer100:22},{label:"Grilled tomatoes",base:100,unit:"g",scale:false,kcalPer100:18}]},
   ],
   rest:[
-    {name:"Anti-Inflammatory Breakfast",emoji:"🌿",baseKcal:350,recipe:"https://www.bbcgoodfood.com/recipes/smoked-salmon-avocado-toast",
-     why:"Omega-3s from salmon continue reducing systemic inflammation. Avocado provides vitamin E for cell repair.",
-     ingredients:[
-       {label:"Smoked salmon",base:80,unit:"g",scale:true,kcalPer100:142},
-       {label:"Avocado",base:.5,unit:"",scale:true,kcalEach:160},
-       {label:"Rye bread",base:2,unit:"slices",scale:false,kcalEach:83},
-       {label:"Poached eggs",base:2,unit:"",scale:true,kcalEach:78},
-     ]},
-    {name:"High-Protein Power Salad",emoji:"🥗",baseKcal:400,recipe:"https://www.bbcgoodfood.com/recipes/high-protein-salad",
-     why:"Protein stays high on rest days. Nuts and seeds provide magnesium for muscle function.",
-     ingredients:[
-       {label:"Chicken or tempeh",base:120,unit:"g",scale:true,kcalPer100:150},
-       {label:"Cooked quinoa",base:80,unit:"g",scale:true,kcalPer100:120},
-       {label:"Mixed leaves",base:60,unit:"g",scale:false,kcalPer100:20},
-       {label:"Pumpkin seeds",base:20,unit:"g",scale:false,kcalPer100:559},
-     ]},
-    {name:"Cottage Cheese Bowl",emoji:"🍵",baseKcal:310,recipe:"https://www.eatingwell.com/recipe/252069/cottage-cheese-with-fruit/",
-     why:"Slow-digesting casein protein feeds overnight repair from your last hard session.",
-     ingredients:[
-       {label:"Cottage cheese",base:200,unit:"g",scale:true,kcalPer100:98},
-       {label:"Walnuts",base:20,unit:"g",scale:true,kcalPer100:654},
-       {label:"Blueberries",base:80,unit:"g",scale:false,kcalPer100:57},
-       {label:"Honey",base:1,unit:"tbsp",scale:false,kcalEach:64},
-     ]},
-    {name:"Red Lentil Soup",emoji:"🍲",baseKcal:340,recipe:"https://www.bbcgoodfood.com/recipes/lentil-soup",
-     why:"Plant-based iron and protein. Gut-friendly. Turmeric adds powerful anti-inflammatory curcumin.",
-     ingredients:[
-       {label:"Red lentils",base:100,unit:"g",scale:true,kcalPer100:353},
-       {label:"Spinach",base:60,unit:"g",scale:false,kcalPer100:23},
-       {label:"Veg stock",base:400,unit:"ml",scale:false,kcalPer100:5},
-       {label:"Wholegrain roll",base:1,unit:"",scale:false,kcalEach:145},
-     ]},
-    {name:"Baked Cod + Roasted Veg",emoji:"🐟",baseKcal:290,recipe:"https://www.bbcgoodfood.com/recipes/baked-cod-roasted-vegetables",
-     why:"Ultra-lean white fish, high in B12 and selenium for muscle and nerve function. Light on rest days.",
-     ingredients:[
-       {label:"Cod fillet",base:180,unit:"g",scale:true,kcalPer100:82},
-       {label:"Sweet potato",base:120,unit:"g",scale:true,kcalPer100:86},
-       {label:"Asparagus",base:80,unit:"g",scale:false,kcalPer100:20},
-       {label:"Olive oil",base:8,unit:"ml",scale:false,kcalPer100:884},
-     ]},
+    {name:"Anti-Inflammatory Breakfast",emoji:"🌿",baseKcal:350,recipe:"https://www.bbcgoodfood.com/recipes/smoked-salmon-avocado-toast",why:"Omega-3s from salmon continue reducing systemic inflammation. Avocado provides vitamin E for cell repair.",ingredients:[{label:"Smoked salmon",base:80,unit:"g",scale:true,kcalPer100:142},{label:"Avocado",base:.5,unit:"",scale:true,kcalEach:160},{label:"Rye bread",base:2,unit:"slices",scale:false,kcalEach:83},{label:"Poached eggs",base:2,unit:"",scale:true,kcalEach:78}]},
+    {name:"High-Protein Power Salad",emoji:"🥗",baseKcal:400,recipe:"https://www.bbcgoodfood.com/recipes/high-protein-salad",why:"Protein stays high on rest days. Nuts and seeds provide magnesium for muscle function.",ingredients:[{label:"Chicken or tempeh",base:120,unit:"g",scale:true,kcalPer100:150},{label:"Cooked quinoa",base:80,unit:"g",scale:true,kcalPer100:120},{label:"Mixed leaves",base:60,unit:"g",scale:false,kcalPer100:20},{label:"Pumpkin seeds",base:20,unit:"g",scale:false,kcalPer100:559}]},
+    {name:"Cottage Cheese Bowl",emoji:"🍵",baseKcal:310,recipe:"https://www.eatingwell.com/recipe/252069/cottage-cheese-with-fruit/",why:"Slow-digesting casein protein feeds overnight repair from your last hard session.",ingredients:[{label:"Cottage cheese",base:200,unit:"g",scale:true,kcalPer100:98},{label:"Walnuts",base:20,unit:"g",scale:true,kcalPer100:654},{label:"Blueberries",base:80,unit:"g",scale:false,kcalPer100:57},{label:"Honey",base:1,unit:"tbsp",scale:false,kcalEach:64}]},
+    {name:"Red Lentil Soup",emoji:"🍲",baseKcal:340,recipe:"https://www.bbcgoodfood.com/recipes/lentil-soup",why:"Plant-based iron and protein. Gut-friendly. Turmeric adds powerful anti-inflammatory curcumin.",ingredients:[{label:"Red lentils",base:100,unit:"g",scale:true,kcalPer100:353},{label:"Spinach",base:60,unit:"g",scale:false,kcalPer100:23},{label:"Veg stock",base:400,unit:"ml",scale:false,kcalPer100:5},{label:"Wholegrain roll",base:1,unit:"",scale:false,kcalEach:145}]},
+    {name:"Baked Cod + Roasted Veg",emoji:"🐟",baseKcal:290,recipe:"https://www.bbcgoodfood.com/recipes/baked-cod-roasted-vegetables",why:"Ultra-lean white fish, high in B12 and selenium for muscle and nerve function. Light on rest days.",ingredients:[{label:"Cod fillet",base:180,unit:"g",scale:true,kcalPer100:82},{label:"Sweet potato",base:120,unit:"g",scale:true,kcalPer100:86},{label:"Asparagus",base:80,unit:"g",scale:false,kcalPer100:20},{label:"Olive oil",base:8,unit:"ml",scale:false,kcalPer100:884}]},
   ],
 };
 
 const CL_MEALS=[
-  {name:"Pasta Primavera",emoji:"🍝",baseKcal:580,recipe:"https://www.bbcgoodfood.com/recipes/pasta-primavera",
-   why:"Classic carb load staple. Simple pasta keeps gut load low while maximising glycogen storage.",
-   ingredients:[
-     {label:"Cooked pasta",base:300,unit:"g",scale:true,kcalPer100:158},
-     {label:"Light tomato sauce",base:100,unit:"g",scale:true,kcalPer100:32},
-     {label:"Parmesan",base:15,unit:"g",scale:false,kcalPer100:431},
-   ]},
-  {name:"Rice + Chicken + Sweet Potato",emoji:"🍚",baseKcal:620,recipe:"https://www.bbcgoodfood.com/recipes/chicken-rice-sweet-potato",
-   why:"Double carb source for max glycogen storage. Easily digestible, low fibre, low fat.",
-   ingredients:[
-     {label:"White rice",base:250,unit:"g",scale:true,kcalPer100:130},
-     {label:"Chicken breast",base:150,unit:"g",scale:true,kcalPer100:165},
-     {label:"Sweet potato",base:150,unit:"g",scale:true,kcalPer100:86},
-   ]},
-  {name:"Bagels with Light Toppings",emoji:"🥯",baseKcal:540,recipe:"https://www.bbcgoodfood.com/recipes/bagel-cream-cheese",
-   why:"High-GI carbs for glycogen supercompensation. Low fat keeps stomach settled race week.",
-   ingredients:[
-     {label:"Sesame bagels",base:2,unit:"",scale:true,kcalEach:270},
-     {label:"Low-fat cream cheese",base:30,unit:"g",scale:true,kcalPer100:150},
-     {label:"Banana",base:1,unit:"",scale:false,kcalEach:89},
-   ]},
-  {name:"Banana Oat Pancakes",emoji:"🥞",baseKcal:560,recipe:"https://www.bbcgoodfood.com/recipes/banana-oat-pancakes",
-   why:"Carb-dense and portable. Bananas top up potassium to prevent pre-race cramping.",
-   ingredients:[
-     {label:"Oats",base:120,unit:"g",scale:true,kcalPer100:389},
-     {label:"Bananas",base:2,unit:"",scale:true,kcalEach:89},
-     {label:"Eggs",base:2,unit:"",scale:false,kcalEach:78},
-     {label:"Maple syrup",base:15,unit:"ml",scale:false,kcalPer100:260},
-   ]},
-  {name:"Rice Congee + White Toast",emoji:"🍜",baseKcal:380,recipe:"https://www.bbcgoodfood.com/recipes/congee",
-   why:"Highly digestible, low-residue. Gentle on the gut — ideal the night before race day.",
-   ingredients:[
-     {label:"White rice",base:200,unit:"g",scale:true,kcalPer100:130},
-     {label:"Chicken broth",base:500,unit:"ml",scale:false,kcalPer100:5},
-     {label:"White toast",base:2,unit:"slices",scale:false,kcalEach:79},
-     {label:"Honey",base:1,unit:"tsp",scale:false,kcalEach:21},
-   ]},
+  {name:"Pasta Primavera",emoji:"🍝",baseKcal:580,recipe:"https://www.bbcgoodfood.com/recipes/pasta-primavera",why:"Classic carb load staple. Simple pasta keeps gut load low while maximising glycogen storage.",ingredients:[{label:"Cooked pasta",base:300,unit:"g",scale:true,kcalPer100:158},{label:"Light tomato sauce",base:100,unit:"g",scale:true,kcalPer100:32},{label:"Parmesan",base:15,unit:"g",scale:false,kcalPer100:431}]},
+  {name:"Rice + Chicken + Sweet Potato",emoji:"🍚",baseKcal:620,recipe:"https://www.bbcgoodfood.com/recipes/chicken-rice-sweet-potato",why:"Double carb source for max glycogen storage. Low fibre, low fat, easily digestible.",ingredients:[{label:"White rice",base:250,unit:"g",scale:true,kcalPer100:130},{label:"Chicken breast",base:150,unit:"g",scale:true,kcalPer100:165},{label:"Sweet potato",base:150,unit:"g",scale:true,kcalPer100:86}]},
+  {name:"Bagels with Light Toppings",emoji:"🥯",baseKcal:540,recipe:"https://www.bbcgoodfood.com/recipes/bagel-cream-cheese",why:"High-GI carbs for glycogen supercompensation. Low fat keeps stomach settled race week.",ingredients:[{label:"Sesame bagels",base:2,unit:"",scale:true,kcalEach:270},{label:"Low-fat cream cheese",base:30,unit:"g",scale:true,kcalPer100:150},{label:"Banana",base:1,unit:"",scale:false,kcalEach:89}]},
+  {name:"Banana Oat Pancakes",emoji:"🥞",baseKcal:560,recipe:"https://www.bbcgoodfood.com/recipes/banana-oat-pancakes",why:"Carb-dense and portable. Bananas top up potassium to prevent pre-race cramping.",ingredients:[{label:"Oats",base:120,unit:"g",scale:true,kcalPer100:389},{label:"Bananas",base:2,unit:"",scale:true,kcalEach:89},{label:"Eggs",base:2,unit:"",scale:false,kcalEach:78},{label:"Maple syrup",base:15,unit:"ml",scale:false,kcalPer100:260}]},
+  {name:"Rice Congee + White Toast",emoji:"🍜",baseKcal:380,recipe:"https://www.bbcgoodfood.com/recipes/congee",why:"Highly digestible, low-residue. Gentle on the gut — ideal the night before race day.",ingredients:[{label:"White rice",base:200,unit:"g",scale:true,kcalPer100:130},{label:"Chicken broth",base:500,unit:"ml",scale:false,kcalPer100:5},{label:"White toast",base:2,unit:"slices",scale:false,kcalEach:79},{label:"Honey",base:1,unit:"tsp",scale:false,kcalEach:21}]},
 ];
 
 const TIMING={easy:"45 min post-run",interval:"20–30 min (critical window)",tempo:"30–45 min post-run",midweek_long:"30–45 min, then full meal within 2 hrs",long:"20–30 min immediate, then every 2 hrs",rest:"Normal meal schedule"};
 const AVOID={easy:["Heavy fried foods","Skipping the post-run window","Alcohol"],interval:["High-fat meals (slows carb absorption)","Fasting post-session","Sugar alone without protein"],tempo:["Highly processed carbs alone","Not eating because you're not hungry","Alcohol within 4 hrs"],midweek_long:["Skimping on carbs","Only a protein shake","Excess fibre immediately post-run"],long:["Skipping the immediate window","Alcohol (severely impairs recovery)","Undereating post-run","High-fibre first meal"],rest:["Drastically cutting calories","Ultra-processed foods","Excessive alcohol"]};
 const TIPS={easy:"Easy days are where adaptation consolidates — don't undereat. Fuel the recovery.",interval:"After intervals, muscles are primed to absorb carbs for 30–60 min. Don't miss this window.",tempo:"Tempo runs are great fitness builders — honour the training with equal quality in nutrition.",midweek_long:"This pre-loads your long run. Glycogen stores carry over day-to-day — eating well today protects your weekend session.",long:"Don't earn the right to under-recover. Long runs break you down — nutrition builds you back stronger.",rest:"Rest days are where fitness gains happen. Eat to support adaptation, not to punish yourself."};
 
-// Scale ingredient quantities based on user weight vs 70kg reference
-function scaleIngredients(ingredients, kg){
+function scaleIngredients(ingredients,kg){
   const ratio=kg?Math.max(.6,Math.min(2.0,kg/70)):1;
   return ingredients.map(ing=>{
     const r=ing.scale?ratio:1;
@@ -415,10 +271,13 @@ function scaleIngredients(ingredients, kg){
   });
 }
 
-const Pill=({children,color})=>(
-  <span style={{display:"inline-block",padding:"2px 8px",borderRadius:4,fontSize:9,fontWeight:700,letterSpacing:"0.08em",fontFamily:"'Space Mono',monospace",background:`${color}18`,color}}>{children}</span>
-);
+// ─── SHARED UI ────────────────────────────────────────────────────────────────
+const mono="'Space Mono',monospace";
+const bebas="'Bebas Neue',sans-serif";
 
+const Pill=({children,color})=>(
+  <span style={{display:"inline-block",padding:"2px 8px",borderRadius:4,fontSize:9,fontWeight:700,letterSpacing:"0.08em",fontFamily:mono,background:`${color}18`,color}}>{children}</span>
+);
 const MacroBar=({carbs,protein,fat})=>{
   const t=(carbs+protein+fat)||1;
   return(
@@ -432,7 +291,7 @@ const MacroBar=({carbs,protein,fat})=>{
         {[["Carbs",carbs,"#4ade80"],["Protein",protein,"#f59e0b"],["Fat",fat,"#60a5fa"]].map(([l,v,c])=>(
           <div key={l} style={{display:"flex",alignItems:"center",gap:5}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:c}}/>
-            <span style={{fontSize:11,color:"#94a3b8",fontFamily:"'Space Mono',monospace"}}>{l} <strong style={{color:"#e2e8f0"}}>{v}g</strong></span>
+            <span style={{fontSize:11,color:"#94a3b8",fontFamily:mono}}>{l} <strong style={{color:"#e2e8f0"}}>{v}g</strong></span>
           </div>
         ))}
       </div>
@@ -440,7 +299,6 @@ const MacroBar=({carbs,protein,fat})=>{
   );
 };
 
-// The replenishment target card — mirrors the hydration card pattern
 const ReplenishCard=({burned,replenish,dishKcal,dishName,sessionColor,eu})=>{
   if(!burned||!replenish)return null;
   const pct=dishKcal?Math.min(100,Math.round((dishKcal/replenish.kcal)*100)):0;
@@ -448,29 +306,22 @@ const ReplenishCard=({burned,replenish,dishKcal,dishName,sessionColor,eu})=>{
   const showKcal=eu==="kcal"||eu==="both";
   const showKj=eu==="kj"||eu==="both";
   const fmt=(kcal)=>showKcal&&showKj?`${kcal.toLocaleString()} kcal / ${Math.round(kcal*4.184).toLocaleString()} kJ`:showKj?`${Math.round(kcal*4.184).toLocaleString()} kJ`:`${kcal.toLocaleString()} kcal`;
-
   return(
     <div style={{background:`${sessionColor||"#4ade80"}0a`,border:`1px solid ${sessionColor||"#4ade80"}25`,borderRadius:12,padding:"16px 20px",animation:"fi .4s ease"}}>
-      <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:sessionColor||"#4ade80",letterSpacing:"0.12em",marginBottom:14}}>
-        🔁 REPLENISHMENT TARGET
-      </div>
+      <div style={{fontSize:11,fontFamily:mono,color:sessionColor||"#4ade80",letterSpacing:"0.12em",marginBottom:14}}>🔁 REPLENISHMENT TARGET</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
-        {[
-          {label:"BURNED",kcal:burned.kcal,color:"#f87171",note:"this session"},
-          {label:"REPLENISH",kcal:replenish.kcal,color:sessionColor||"#4ade80",note:`${Math.round(replenish.rate*100)}% of burn`},
-          {label:"THIS DISH",kcal:dishKcal||null,color:"#60a5fa",note:dishName||"select meal"},
-        ].map(({label,kcal,color,note})=>(
+        {[{label:"BURNED",kcal:burned.kcal,color:"#f87171",note:"this session"},{label:"REPLENISH",kcal:replenish.kcal,color:sessionColor||"#4ade80",note:`${Math.round(replenish.rate*100)}% of burn`},{label:"THIS DISH",kcal:dishKcal||null,color:"#60a5fa",note:dishName||"select meal"}].map(({label,kcal,color,note})=>(
           <div key={label} style={{background:"#080f1a",borderRadius:10,padding:"12px 14px",border:"1px solid #0f172a"}}>
-            <div style={{fontSize:9,fontFamily:"'Space Mono',monospace",color:"#475569",letterSpacing:"0.1em",marginBottom:6}}>{label}</div>
+            <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:6}}>{label}</div>
             {kcal?(
               <>
-                {showKcal&&<div style={{fontSize:18,fontWeight:700,color,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{kcal.toLocaleString()}</div>}
-                {showKcal&&<div style={{fontSize:9,fontFamily:"'Space Mono',monospace",color:"#334155",marginBottom:showKj?3:0}}>kcal</div>}
-                {showKj&&<div style={{fontSize:showKcal?14:18,fontWeight:showKcal?500:700,color:showKcal?"#64748b":color,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{Math.round(kcal*4.184).toLocaleString()}</div>}
-                {showKj&&<div style={{fontSize:9,fontFamily:"'Space Mono',monospace",color:"#334155"}}>kJ</div>}
+                {showKcal&&<div style={{fontSize:18,fontWeight:700,color,fontFamily:mono,lineHeight:1}}>{kcal.toLocaleString()}</div>}
+                {showKcal&&<div style={{fontSize:9,fontFamily:mono,color:"#334155",marginBottom:showKj?3:0}}>kcal</div>}
+                {showKj&&<div style={{fontSize:showKcal?14:18,fontWeight:showKcal?500:700,color:showKcal?"#64748b":color,fontFamily:mono,lineHeight:1}}>{Math.round(kcal*4.184).toLocaleString()}</div>}
+                {showKj&&<div style={{fontSize:9,fontFamily:mono,color:"#334155"}}>kJ</div>}
               </>
             ):(
-              <div style={{fontSize:18,fontWeight:700,color:"#334155",fontFamily:"'Space Mono',monospace"}}>—</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#334155",fontFamily:mono}}>—</div>
             )}
             <div style={{fontSize:10,color:"#334155",marginTop:5}}>{note}</div>
           </div>
@@ -494,22 +345,108 @@ const ReplenishCard=({burned,replenish,dishKcal,dishName,sessionColor,eu})=>{
   );
 };
 
+// ─── PHASE EXPLAINER ─────────────────────────────────────────────────────────
+// This is the section that makes the link between phase and nutrition concrete
+function PhaseNutritionBanner({phase,macros,carbLoad}){
+  if(!phase)return null;
+  const [open,setOpen]=useState(false);
+  const isAdjusted=phase.carbMult!==1||phase.proteinMult!==1;
+  return(
+    <div style={{background:`${phase.color}0c`,border:`1px solid ${phase.color}30`,borderRadius:14,marginBottom:16,overflow:"hidden",animation:"fi .4s ease"}}>
+      {/* Always-visible strip */}
+      <div style={{padding:"14px 20px",display:"flex",alignItems:"center",gap:14,cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
+        <div style={{fontSize:28,flexShrink:0}}>{phase.emoji}</div>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3,flexWrap:"wrap"}}>
+            <span style={{fontFamily:bebas,fontSize:17,letterSpacing:"0.06em",color:phase.color}}>{phase.label.toUpperCase()}</span>
+            {isAdjusted&&!carbLoad&&(
+              <span style={{display:"inline-flex",alignItems:"center",gap:5,padding:"2px 8px",borderRadius:4,fontSize:9,fontWeight:700,fontFamily:mono,background:`${phase.color}18`,color:phase.color}}>
+                CARBS ×{phase.carbMult}{phase.proteinMult!==1?` · PROTEIN ×${phase.proteinMult}`:""}
+              </span>
+            )}
+          </div>
+          <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.4}}>{phase.headline}</p>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+          {macros&&!carbLoad&&isAdjusted&&(
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.08em"}}>ADJUSTED CARBS</div>
+              <div style={{fontFamily:bebas,fontSize:22,color:phase.color,lineHeight:1}}>{macros.carbs}g</div>
+            </div>
+          )}
+          <div style={{fontSize:16,color:phase.color,transition:"transform .2s",transform:open?"rotate(180deg)":"none"}}>▾</div>
+        </div>
+      </div>
+
+      {/* Expanded explanation */}
+      {open&&(
+        <div style={{borderTop:`1px solid ${phase.color}20`,padding:"16px 20px",background:`${phase.color}05`,animation:"fi .2s ease"}}>
+          <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.65,marginBottom:16}}>{phase.summary}</p>
+
+          {/* What changes in nutrition */}
+          {isAdjusted&&!carbLoad&&(
+            <div style={{background:"#080f1a",borderRadius:10,padding:"12px 16px",marginBottom:14,border:`1px solid ${phase.color}20`}}>
+              <div style={{fontSize:10,fontFamily:mono,color:phase.color,letterSpacing:"0.1em",marginBottom:10}}>📊 HOW THESE TARGETS ARE CALCULATED</div>
+              <p style={{fontSize:13,color:"#64748b",lineHeight:1.65}}>
+                Base macro targets are calculated from your weight and session intensity. In <strong style={{color:phase.color}}>{phase.label}</strong>, those numbers are multiplied:
+              </p>
+              <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+                {[["Carbs",`×${phase.carbMult}`,phase.color,"Higher training load depletes more glycogen. You need to replace proportionally more."],[...phase.proteinMult!==1?[["Protein",`×${phase.proteinMult}`,"#f59e0b","Greater muscle damage from increased volume requires more protein for repair."]]:[]]].map(([label,mult,color,reason])=>(
+                  <div key={label} style={{flex:1,minWidth:160,background:"#0c1420",borderRadius:8,padding:"10px 12px",border:`1px solid ${color}25`}}>
+                    <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:4}}>
+                      <span style={{fontSize:10,fontFamily:mono,color:"#475569"}}>{label}</span>
+                      <span style={{fontFamily:bebas,fontSize:20,color,lineHeight:1}}>{mult}</span>
+                    </div>
+                    <p style={{fontSize:11,color:"#475569",lineHeight:1.5}}>{reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Priority checklist */}
+          <div style={{fontSize:10,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:8}}>✅ NUTRITION PRIORITIES THIS PHASE</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {phase.priorities.map((p,i)=>(
+              <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                <div style={{width:20,height:20,borderRadius:"50%",background:`${phase.color}18`,border:`1px solid ${phase.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:9,color:phase.color,flexShrink:0}}>{i+1}</div>
+                <span style={{fontSize:13,color:"#94a3b8",lineHeight:1.5,paddingTop:2}}>{p}</span>
+              </div>
+            ))}
+          </div>
+
+          {phase.warning&&(
+            <div style={{marginTop:14,background:"#1a0f00",border:"1px solid #f59e0b40",borderRadius:8,padding:"10px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+              <span style={{fontSize:14,flexShrink:0}}>⚠️</span>
+              <span style={{fontSize:12,color:"#f59e0b",lineHeight:1.5}}>{phase.warning}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function App(){
   const [weight,setWeight]=useState("");
   const [unit,setUnit]=useState("kg");
+  const [raceDate,setRaceDate]=useState("");
   const [selected,setSelected]=useState(null);
   const [durations,setDurations]=useState({...DEFAULT_DUR});
   const [expandDur,setExpandDur]=useState(false);
   const [activeMeal,setActiveMeal]=useState(0);
   const [carbLoad,setCarbLoad]=useState(false);
   const [sweatKey,setSweatKey]=useState("normal");
-  const [tab,setTab]=useState("meals");
-  const [eu,setEu]=useState("both"); // energy unit: kcal|kj|both
+  const [sessionTab,setSessionTab]=useState("pre-run"); // pre-run | post-run | hydration | tips
+  const [eu,setEu]=useState("both");
 
   const kg=useMemo(()=>weight?(unit==="kg"?parseFloat(weight):parseFloat(weight)*.453592):null,[weight,unit]);
   const sess=useMemo(()=>SESSIONS.find(s=>s.id===selected),[selected]);
   const dur=selected?(durations[selected]||DEFAULT_DUR[selected]):60;
-  const macros=useMemo(()=>kg&&(selected||carbLoad)?calcMacros(kg,selected||"easy",dur,carbLoad):null,[kg,selected,dur,carbLoad]);
+  const weeksOut=useMemo(()=>raceDate?weeksUntil(raceDate):null,[raceDate]);
+  const phase=useMemo(()=>getPhase(weeksOut),[weeksOut]);
+  const macros=useMemo(()=>kg&&(selected||carbLoad)?calcMacros(kg,selected||"easy",dur,carbLoad,phase):null,[kg,selected,dur,carbLoad,phase]);
   const burned=useMemo(()=>kg&&sess&&dur?calcBurned(sess.met,kg,dur):null,[kg,sess,dur]);
   const replenish=useMemo(()=>burned&&selected?calcReplenish(burned,kg,selected):null,[burned,kg,selected]);
   const hydration=useMemo(()=>{if(!kg||!(selected||carbLoad))return null;return SWEAT[sweatKey].hydFn(kg,selected||"easy",dur);},[kg,selected,dur,sweatKey,carbLoad]);
@@ -518,10 +455,11 @@ function App(){
 
   const scaledIngs=useMemo(()=>{if(!meals[activeMeal])return[];return scaleIngredients(meals[activeMeal].ingredients,kg);},[meals,activeMeal,kg]);
   const dishKcal=useMemo(()=>{if(!meals[activeMeal])return null;return kg?scaledIngs.reduce((s,i)=>s+i.kcal,0):meals[activeMeal].baseKcal;},[scaledIngs,meals,activeMeal,kg]);
+  const preData=selected?PRE[selected]:null;
+  const [preMeal,setPreMeal]=useState(0);
 
-  useEffect(()=>{setActiveMeal(0);},[selected,carbLoad]);
+  useEffect(()=>{setActiveMeal(0);setPreMeal(0);},[selected,carbLoad]);
   const setDur=(id,val)=>setDurations(d=>({...d,[id]:Math.max(0,Math.min(300,parseInt(val)||0))}));
-
   const showKcal=eu==="kcal"||eu==="both";
   const showKj=eu==="kj"||eu==="both";
 
@@ -529,44 +467,54 @@ function App(){
     <div style={{minHeight:"100vh",background:"#040a0f",paddingBottom:80}}>
 
       {/* HEADER */}
-      <div style={{padding:"40px 24px 28px",borderBottom:"1px solid #0f172a",background:"linear-gradient(180deg,#060f1a 0%,#040a0f 100%)"}}>
+      <div style={{padding:"36px 24px 26px",borderBottom:"1px solid #0f172a",background:"linear-gradient(180deg,#060f1a 0%,#040a0f 100%)"}}>
         <div style={{maxWidth:980,margin:"0 auto"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
             <div style={{width:7,height:7,borderRadius:"50%",background:"#4ade80",animation:"pulse 2s infinite"}}/>
-            <span style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#4ade80",letterSpacing:"0.15em"}}>MARATHON TRAINING NUTRITION</span>
+            <span style={{fontSize:11,fontFamily:mono,color:"#4ade80",letterSpacing:"0.15em"}}>{fmtToday.toUpperCase()}</span>
           </div>
-          <h1 style={{fontSize:"clamp(40px,8vw,68px)",fontFamily:"'Bebas Neue',sans-serif",letterSpacing:"0.04em",lineHeight:.95,color:"#f8fafc",marginBottom:10}}>
-            FUEL YOUR<br/><span style={{color:"#4ade80"}}>RECOVERY</span>
-          </h1>
+          <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:10}}>
+            <h1 style={{fontSize:"clamp(40px,8vw,68px)",fontFamily:bebas,letterSpacing:"0.04em",lineHeight:.95,color:"#f8fafc"}}>
+              FUEL YOUR<br/><span style={{color:"#4ade80"}}>MARATHON</span>
+            </h1>
+            {/* Race countdown chip */}
+            {raceDate&&weeksOut!==null&&phase&&(
+              <div style={{background:`${phase.color}12`,border:`1px solid ${phase.color}30`,borderRadius:12,padding:"12px 18px",textAlign:"right"}}>
+                <div style={{fontSize:9,fontFamily:mono,color:phase.color,letterSpacing:"0.1em",marginBottom:2}}>{phase.emoji} {phase.label.toUpperCase()}</div>
+                <div style={{fontFamily:bebas,fontSize:34,color:phase.color,lineHeight:1}}>{weeksOut} WEEKS OUT</div>
+                <div style={{fontSize:11,color:"#475569",marginTop:2}}>{daysUntil(raceDate)} days · {new Date(raceDate+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</div>
+              </div>
+            )}
+          </div>
           <p style={{fontSize:14,color:"#64748b",maxWidth:500,lineHeight:1.65}}>
-            Enter your weight and session duration. Ingredient quantities, energy targets, and replenishment tracking all scale to you personally.
+            Pre-run fuelling, post-run recovery, and training-phase nutrition — all personalised to your weight, session, and race timeline.
           </p>
         </div>
       </div>
 
       <div style={{maxWidth:980,margin:"0 auto",padding:"0 24px"}}>
 
-        {/* SETUP */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12,marginTop:28,marginBottom:20}}>
+        {/* ── SETUP ROW ── */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12,marginTop:24,marginBottom:16}}>
 
-          {/* Weight */}
+          {/* Weight + energy unit */}
           <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:14,padding:20}}>
-            <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>YOUR WEIGHT</div>
-            <div style={{display:"flex",gap:8}}>
+            <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>YOUR WEIGHT</div>
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
               <input type="number" min="30" max="250" placeholder={unit==="kg"?"e.g. 72":"e.g. 158"} value={weight} onChange={e=>setWeight(e.target.value)}
-                style={{flex:1,background:"#080f1a",border:"1px solid #1e293b",borderRadius:8,padding:"10px 14px",color:"#f8fafc",fontSize:16,fontFamily:"'Space Mono',monospace",outline:"none"}}/>
+                style={{flex:1,background:"#080f1a",border:"1px solid #1e293b",borderRadius:8,padding:"10px 14px",color:"#f8fafc",fontSize:16,fontFamily:mono,outline:"none"}}/>
               <div style={{display:"flex",background:"#080f1a",border:"1px solid #1e293b",borderRadius:8,overflow:"hidden",flexShrink:0}}>
                 {["kg","lbs"].map(u=>(
                   <button key={u} onClick={()=>setUnit(u)} style={{padding:"0 14px",background:unit===u?"#1e293b":"transparent",color:unit===u?"#f8fafc":"#475569",border:"none",cursor:"pointer",fontSize:13,fontWeight:600,transition:"all .15s"}}>{u}</button>
                 ))}
               </div>
             </div>
-            {kg&&<div style={{marginTop:8,fontFamily:"'Space Mono',monospace",fontSize:11,color:"#4ade80"}}>✓ {kg.toFixed(1)} kg — ingredients scaled to you</div>}
-            <div style={{marginTop:14,borderTop:"1px solid #0f172a",paddingTop:12}}>
-              <div style={{fontSize:10,fontFamily:"'Space Mono',monospace",color:"#475569",marginBottom:8,letterSpacing:"0.1em"}}>ENERGY DISPLAY</div>
+            {kg&&<div style={{fontFamily:mono,fontSize:11,color:"#4ade80",marginBottom:14}}>✓ {kg.toFixed(1)} kg — ingredients & macros scaled to you</div>}
+            <div style={{borderTop:"1px solid #0f172a",paddingTop:12}}>
+              <div style={{fontSize:10,fontFamily:mono,color:"#475569",marginBottom:8,letterSpacing:"0.1em"}}>ENERGY DISPLAY</div>
               <div style={{display:"flex",gap:6}}>
                 {[["kcal","kcal"],["kj","kJ"],["both","Both"]].map(([v,l])=>(
-                  <button key={v} onClick={()=>setEu(v)} style={{flex:1,padding:"5px 0",borderRadius:6,border:"1px solid",borderColor:eu===v?"#4ade80":"#1e293b",background:eu===v?"#0d2318":"transparent",color:eu===v?"#4ade80":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",transition:"all .15s"}}>{l}</button>
+                  <button key={v} onClick={()=>setEu(v)} style={{flex:1,padding:"6px 0",borderRadius:6,border:"1px solid",borderColor:eu===v?"#4ade80":"#1e293b",background:eu===v?"#0d2318":"transparent",color:eu===v?"#4ade80":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",transition:"all .15s"}}>{l}</button>
                 ))}
               </div>
             </div>
@@ -574,7 +522,7 @@ function App(){
 
           {/* Sweat profile */}
           <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:14,padding:20}}>
-            <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>SWEAT / CRAMP PROFILE</div>
+            <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>SWEAT / CRAMP PROFILE</div>
             <div style={{display:"flex",flexDirection:"column",gap:7}}>
               {Object.entries(SWEAT).map(([key,p])=>(
                 <button key={key} onClick={()=>setSweatKey(key)} style={{cursor:"pointer",padding:"9px 12px",borderRadius:8,border:"1px solid",borderColor:sweatKey===key?p.color:"#1e293b",background:sweatKey===key?`${p.color}12`:"#080f1a",textAlign:"left",transition:"all .18s"}}>
@@ -591,41 +539,51 @@ function App(){
             </div>
           </div>
 
-          {/* Duration */}
+          {/* Race date + duration */}
           <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:14,padding:20}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#475569",letterSpacing:"0.12em"}}>SESSION DURATIONS</div>
-              <button onClick={()=>setExpandDur(x=>!x)} style={{fontSize:11,color:"#4ade80",background:"none",border:"none",cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>{expandDur?"▲ COLLAPSE":"▼ EDIT ALL"}</button>
-            </div>
-            {SESSIONS.filter(s=>s.id!=="rest").map(s=>(
-              <div key={s.id} style={{marginBottom:expandDur?14:0,display:expandDur||selected===s.id?"block":"none"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                  <span style={{fontSize:12,color:"#94a3b8"}}>{s.icon} {s.label}</span>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <input type="number" min="0" max="300" value={durations[s.id]||""} onChange={e=>setDur(s.id,e.target.value)}
-                      style={{width:60,background:"#080f1a",border:"1px solid",borderColor:selected===s.id?s.color:"#1e293b",borderRadius:6,padding:"4px 8px",color:"#f8fafc",fontSize:13,fontFamily:"'Space Mono',monospace",outline:"none",textAlign:"center"}}/>
-                    <span style={{fontSize:11,color:"#475569"}}>min</span>
-                  </div>
-                </div>
-                {expandDur&&<input type="range" min="10" max="300" value={durations[s.id]||DEFAULT_DUR[s.id]} onChange={e=>setDur(s.id,e.target.value)} style={{width:"100%",accentColor:s.color}}/>}
+            <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>RACE DATE <span style={{color:"#334155",fontWeight:400}}>(optional)</span></div>
+            <input type="date" value={raceDate} onChange={e=>setRaceDate(e.target.value)}
+              style={{width:"100%",background:"#080f1a",border:"1px solid #1e293b",borderRadius:8,padding:"10px 14px",color:raceDate?"#f8fafc":"#475569",fontSize:14,fontFamily:mono,outline:"none",marginBottom:10}}/>
+            {raceDate&&weeksOut!==null&&phase&&(
+              <div style={{marginBottom:10,padding:"8px 12px",background:`${phase.color}10`,border:`1px solid ${phase.color}25`,borderRadius:8}}>
+                <div style={{fontSize:11,color:phase.color,fontFamily:mono}}>{phase.emoji} {phase.label}</div>
+                <div style={{fontSize:11,color:"#475569",marginTop:2}}>Macros auto-adjusted for this phase ↓</div>
               </div>
-            ))}
-            {!expandDur&&!selected&&<p style={{fontSize:12,color:"#334155"}}>Select a session to edit its duration, or expand to edit all.</p>}
-            {selected&&!expandDur&&<p style={{fontSize:12,color:"#475569",marginTop:4}}>Editing: <strong style={{color:sess?.color}}>{sess?.label}</strong> — {dur} min</p>}
+            )}
+            <div style={{borderTop:"1px solid #0f172a",paddingTop:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:10,fontFamily:mono,color:"#475569",letterSpacing:"0.1em"}}>SESSION DURATIONS</div>
+                <button onClick={()=>setExpandDur(x=>!x)} style={{fontSize:11,color:"#4ade80",background:"none",border:"none",cursor:"pointer",fontFamily:mono}}>{expandDur?"▲ COLLAPSE":"▼ EDIT ALL"}</button>
+              </div>
+              {SESSIONS.filter(s=>s.id!=="rest").map(s=>(
+                <div key={s.id} style={{marginBottom:expandDur?10:0,display:expandDur||selected===s.id?"block":"none"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+                    <span style={{fontSize:12,color:"#94a3b8"}}>{s.icon} {s.label}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <input type="number" min="0" max="300" value={durations[s.id]||""} onChange={e=>setDur(s.id,e.target.value)}
+                        style={{width:60,background:"#080f1a",border:"1px solid",borderColor:selected===s.id?s.color:"#1e293b",borderRadius:6,padding:"4px 8px",color:"#f8fafc",fontSize:13,fontFamily:mono,outline:"none",textAlign:"center"}}/>
+                      <span style={{fontSize:11,color:"#475569"}}>min</span>
+                    </div>
+                  </div>
+                  {expandDur&&<input type="range" min="10" max="300" value={durations[s.id]||DEFAULT_DUR[s.id]} onChange={e=>setDur(s.id,e.target.value)} style={{width:"100%",accentColor:s.color}}/>}
+                </div>
+              ))}
+              {!expandDur&&!selected&&<p style={{fontSize:12,color:"#334155"}}>Select a session below, or expand to edit all.</p>}
+            </div>
           </div>
         </div>
 
-        {/* CARB LOAD */}
-        <div style={{background:"linear-gradient(135deg,#0c1a2e,#0a1520)",border:"1px solid #1e3a5f",borderRadius:14,padding:"18px 20px",marginBottom:20,display:"flex",alignItems:"center",gap:16}}>
-          <span style={{fontSize:28}}>🏅</span>
+        {/* ── CARB LOAD TOGGLE ── */}
+        <div style={{background:"linear-gradient(135deg,#0c1a2e,#0a1520)",border:"1px solid #1e3a5f",borderRadius:14,padding:"16px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
+          <span style={{fontSize:26}}>🏅</span>
           <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:"0.06em",color:"#f8fafc"}}>CARB LOADING MODE</span>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:3}}>
+              <span style={{fontFamily:bebas,fontSize:19,letterSpacing:"0.06em",color:"#f8fafc"}}>CARB LOADING MODE</span>
               <Pill color="#60a5fa">RACE WEEK</Pill>
             </div>
             <p style={{fontSize:13,color:"#64748b",lineHeight:1.5}}>
               Activate 2–3 days before race day. Targets <strong style={{color:"#93c5fd"}}>10g carbs/kg</strong> to supercharge glycogen stores.
-              {macros&&carbLoad&&kg&&<span style={{color:"#60a5fa"}}> Daily carb target: <strong>{Math.round(10*kg)}g</strong>.</span>}
+              {macros&&carbLoad&&kg&&<span style={{color:"#60a5fa"}}> Your target: <strong>{Math.round(10*kg)}g carbs/day</strong>.</span>}
             </p>
           </div>
           <label style={{position:"relative",display:"inline-block",width:46,height:24,flexShrink:0}}>
@@ -636,13 +594,13 @@ function App(){
           </label>
         </div>
 
-        {/* SESSION PICKER */}
+        {/* ── SESSION PICKER ── */}
         {!carbLoad&&(
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#475569",letterSpacing:"0.12em",marginBottom:14}}>WHAT DID YOU RUN TODAY?</div>
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>TODAY'S SESSION</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(210px,1fr))",gap:10}}>
               {SESSIONS.map(s=>(
-                <div key={s.id} onClick={()=>{setSelected(s.id);setTab("meals");setExpandDur(false);}}
+                <div key={s.id} onClick={()=>setSelected(s.id)}
                   style={{cursor:"pointer",border:"1px solid",borderColor:selected===s.id?s.color:"#1e293b",borderRadius:12,padding:14,background:selected===s.id?"#0f1e2e":"#0c1420",transition:"all .18s",position:"relative",overflow:"hidden"}}>
                   {selected===s.id&&<div style={{position:"absolute",top:0,left:0,width:3,height:"100%",background:s.color}}/>}
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
@@ -651,46 +609,50 @@ function App(){
                   </div>
                   <div style={{fontWeight:600,fontSize:14,marginBottom:3,color:selected===s.id?"#f8fafc":"#cbd5e1"}}>{s.label}</div>
                   <div style={{fontSize:11,color:"#475569",marginBottom:6}}>{s.description}</div>
-                  {s.id!=="rest"&&<div style={{fontFamily:"'Space Mono',monospace",fontSize:10,color:selected===s.id?s.color:"#334155"}}>{durations[s.id]||DEFAULT_DUR[s.id]} min</div>}
+                  {s.id!=="rest"&&<div style={{fontFamily:mono,fontSize:10,color:selected===s.id?s.color:"#334155"}}>{durations[s.id]||DEFAULT_DUR[s.id]} min</div>}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* STATS ROW */}
+        {/* ── PHASE NUTRITION BANNER ── */}
+        {(selected||carbLoad)&&<PhaseNutritionBanner phase={phase} macros={macros} carbLoad={carbLoad}/>}
+
+        {/* ── STATS ROW ── */}
         {(selected||carbLoad)&&(
-          <div style={{animation:"fi .4s ease",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12,marginBottom:16}}>
+          <div style={{animation:"fi .4s ease",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12,marginBottom:12}}>
             {macros&&(
               <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:12,padding:"16px 20px"}}>
-                <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#475569",letterSpacing:"0.12em",marginBottom:10}}>
+                <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:10}}>
                   {carbLoad?"CARB LOAD TARGETS":"POST-RUN MACRO TARGETS"}
                   {kg&&<span style={{color:"#334155"}}> / {kg.toFixed(1)}kg{dur&&!carbLoad?` · ${dur}min`:""}</span>}
+                  {macros.phaseAdj&&!carbLoad&&phase&&<span style={{color:phase.color,marginLeft:6,fontSize:9}}>· {phase.label} ×{phase.carbMult}</span>}
                 </div>
                 <MacroBar {...macros}/>
                 <div style={{marginTop:14,borderTop:"1px solid #0f172a",paddingTop:12,display:"flex",gap:8}}>
                   {showKcal&&<div style={{background:"#080f1a",borderRadius:8,padding:"8px 12px",minWidth:80}}>
-                    <div style={{fontSize:9,fontFamily:"'Space Mono',monospace",color:"#475569",marginBottom:2}}>kcal</div>
-                    <div style={{fontSize:20,fontWeight:700,color:sess?.color||"#60a5fa",fontFamily:"'Space Mono',monospace"}}>{macros.kcal.toLocaleString()}</div>
+                    <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kcal</div>
+                    <div style={{fontSize:20,fontWeight:700,color:sess?.color||"#60a5fa",fontFamily:mono}}>{macros.kcal.toLocaleString()}</div>
                   </div>}
                   {showKj&&<div style={{background:"#080f1a",borderRadius:8,padding:"8px 12px",minWidth:80}}>
-                    <div style={{fontSize:9,fontFamily:"'Space Mono',monospace",color:"#475569",marginBottom:2}}>kJ</div>
-                    <div style={{fontSize:20,fontWeight:700,color:"#a78bfa",fontFamily:"'Space Mono',monospace"}}>{macros.kj.toLocaleString()}</div>
+                    <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kJ</div>
+                    <div style={{fontSize:20,fontWeight:700,color:"#a78bfa",fontFamily:mono}}>{macros.kj.toLocaleString()}</div>
                   </div>}
                 </div>
               </div>
             )}
             {burned&&!carbLoad&&(
               <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:12,padding:"16px 20px"}}>
-                <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#475569",letterSpacing:"0.12em",marginBottom:10}}>ESTIMATED BURN · {dur} min</div>
+                <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:10}}>ESTIMATED BURN · {dur} min</div>
                 <div style={{display:"flex",gap:8}}>
                   {showKcal&&<div style={{background:"#080f1a",borderRadius:8,padding:"8px 12px",minWidth:80}}>
-                    <div style={{fontSize:9,fontFamily:"'Space Mono',monospace",color:"#475569",marginBottom:2}}>kcal</div>
-                    <div style={{fontSize:20,fontWeight:700,color:sess?.color,fontFamily:"'Space Mono',monospace"}}>{burned.kcal.toLocaleString()}</div>
+                    <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kcal</div>
+                    <div style={{fontSize:20,fontWeight:700,color:sess?.color,fontFamily:mono}}>{burned.kcal.toLocaleString()}</div>
                   </div>}
                   {showKj&&<div style={{background:"#080f1a",borderRadius:8,padding:"8px 12px",minWidth:80}}>
-                    <div style={{fontSize:9,fontFamily:"'Space Mono',monospace",color:"#475569",marginBottom:2}}>kJ</div>
-                    <div style={{fontSize:20,fontWeight:700,color:"#a78bfa",fontFamily:"'Space Mono',monospace"}}>{burned.kj.toLocaleString()}</div>
+                    <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kJ</div>
+                    <div style={{fontSize:20,fontWeight:700,color:"#a78bfa",fontFamily:mono}}>{burned.kj.toLocaleString()}</div>
                   </div>}
                 </div>
                 <div style={{marginTop:10,fontSize:12,color:"#475569",lineHeight:1.5}}>MET-based estimate. Varies ±15% with fitness, terrain, conditions.</div>
@@ -700,10 +662,10 @@ function App(){
               <div style={{background:`${prof.color}0d`,border:`1px solid ${prof.color}25`,borderRadius:12,padding:"16px 20px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                   <span style={{fontSize:16}}>{prof.icon}</span>
-                  <span style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:prof.color,letterSpacing:"0.1em"}}>HYDRATION TARGET</span>
+                  <span style={{fontSize:11,fontFamily:mono,color:prof.color,letterSpacing:"0.1em"}}>HYDRATION TARGET</span>
                 </div>
-                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:38,color:prof.color,letterSpacing:"0.04em",lineHeight:1}}>{hydration}ml</div>
-                <div style={{fontSize:11,color:"#64748b",marginBottom:10}}>{(hydration/1000).toFixed(1)}L post-run · {prof.label}</div>
+                <div style={{fontFamily:bebas,fontSize:38,color:prof.color,letterSpacing:"0.04em",lineHeight:1}}>{hydration}ml</div>
+                <div style={{fontSize:11,color:"#64748b",marginBottom:8}}>{(hydration/1000).toFixed(1)}L post-run · {prof.label}</div>
                 <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.6}}>{prof.elec}</div>
                 {prof.cramp&&<div style={{marginTop:8,background:`${prof.color}15`,borderRadius:8,padding:"8px 12px",fontSize:12,color:"#94a3b8"}}><strong style={{color:prof.color}}>⚡ </strong>{prof.cramp}</div>}
               </div>
@@ -711,76 +673,140 @@ function App(){
           </div>
         )}
 
-        {/* REPLENISHMENT CARD */}
+        {/* ── REPLENISHMENT CARD ── */}
         {burned&&replenish&&!carbLoad&&(
-          <div style={{marginBottom:16}}>
+          <div style={{marginBottom:12}}>
             <ReplenishCard burned={burned} replenish={replenish} dishKcal={dishKcal} dishName={meals[activeMeal]?.name} sessionColor={sess?.color} eu={eu}/>
           </div>
         )}
 
-        {/* MEALS PANEL */}
+        {/* ── MEALS PANEL ── */}
         {(selected||carbLoad)&&meals.length>0&&(
           <div style={{animation:"fi .4s ease"}}>
+
+            {/* Panel header */}
             <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:"12px 12px 0 0",borderBottom:"none",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
               <span style={{fontSize:24}}>{carbLoad?"🏅":sess?.icon}</span>
               <div>
-                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:"0.06em",color:"#f8fafc"}}>
-                  {carbLoad?"CARB LOADING — RACE WEEK MEALS":sess?.label.toUpperCase()+" — NUTRITION PLAN"}
+                <div style={{fontFamily:bebas,fontSize:18,letterSpacing:"0.06em",color:"#f8fafc"}}>
+                  {carbLoad?"CARB LOADING — RACE WEEK MEALS":sess?.label.toUpperCase()+" — TODAY'S NUTRITION"}
                 </div>
-                {!carbLoad&&selected&&<div style={{fontSize:11,color:sess?.color,fontFamily:"'Space Mono',monospace"}}>{TIMING[selected]}</div>}
+                {!carbLoad&&selected&&<div style={{fontSize:11,color:sess?.color,fontFamily:mono}}>Post-run: {TIMING[selected]}</div>}
               </div>
             </div>
+
+            {/* Tab bar: Pre-Run first, then Post-Run */}
             <div style={{background:"#080f1a",borderLeft:"1px solid #1e293b",borderRight:"1px solid #1e293b",padding:"8px 14px",display:"flex",gap:4,flexWrap:"wrap"}}>
-              {["meals","hydration","tips"].map(t=>(
-                <button key={t} onClick={()=>setTab(t)} style={{padding:"7px 16px",borderRadius:7,fontSize:13,fontWeight:600,border:"none",cursor:"pointer",background:tab===t?"#1e293b":"transparent",color:tab===t?"#f8fafc":"#475569",transition:"all .18s",textTransform:"capitalize"}}>
-                  {t==="tips"?"Tips & Avoid":t.charAt(0).toUpperCase()+t.slice(1)}
-                </button>
+              {[
+                ...(!carbLoad&&selected?[["pre-run",`⚡ Before ${sess?.label}`]]:[]),
+                ["post-run","🍽️ After Run"],
+                ["hydration","💧 Hydration"],
+                ["tips","💡 Tips & Avoid"],
+              ].map(([v,l])=>(
+                <button key={v} onClick={()=>setSessionTab(v)} style={{padding:"7px 14px",borderRadius:7,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:sessionTab===v?"#1e293b":"transparent",color:sessionTab===v?"#f8fafc":"#475569",transition:"all .18s"}}>{l}</button>
               ))}
             </div>
 
-            {/* MEALS TAB */}
-            {tab==="meals"&&(
-              <div style={{background:"#0c1420",border:"1px solid #1e293b",borderTop:`2px solid ${carbLoad?"#60a5fa":sess?.color}`}}>
-                <div style={{padding:"12px 14px",borderBottom:"1px solid #0f172a",overflowX:"auto"}}>
-                  <div style={{display:"flex",gap:6,minWidth:"max-content"}}>
-                    {meals.map((m,i)=>(
-                      <button key={i} onClick={()=>setActiveMeal(i)} style={{padding:"6px 13px",borderRadius:6,fontSize:12,fontWeight:500,border:"1px solid",borderColor:activeMeal===i?"#334155":"#1e293b",background:activeMeal===i?"#1e293b":"transparent",color:activeMeal===i?"#e2e8f0":"#64748b",cursor:"pointer",whiteSpace:"nowrap",transition:"all .18s"}}>
-                        {m.emoji} {m.name}
-                      </button>
+            {/* ── PRE-RUN TAB ── */}
+            {sessionTab==="pre-run"&&preData&&!carbLoad&&(
+              <div style={{background:"#0c1420",border:"1px solid #1e293b",borderTop:`2px solid ${sess?.color}`,animation:"fi .3s ease"}}>
+                {/* Goal banner */}
+                <div style={{padding:"16px 20px 0"}}>
+                  <div style={{background:`${sess?.color}08`,border:`1px solid ${sess?.color}25`,borderRadius:10,padding:"12px 16px",marginBottom:14}}>
+                    <div style={{fontSize:10,fontFamily:mono,color:sess?.color,letterSpacing:"0.12em",marginBottom:5}}>⚡ PRE-RUN FUELLING · {preData.window.toUpperCase()}</div>
+                    <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}><strong style={{color:"#e2e8f0"}}>Goal:</strong> {preData.goal}</p>
+                  </div>
+                </div>
+                {/* Meal tabs */}
+                <div style={{padding:"0 14px",overflowX:"auto"}}>
+                  <div style={{display:"flex",gap:5,minWidth:"max-content",marginBottom:0}}>
+                    {preData.meals.map((m,i)=>(
+                      <button key={i} onClick={()=>setPreMeal(i)} style={{padding:"6px 12px",borderRadius:6,fontSize:12,fontWeight:500,border:"1px solid",borderColor:preMeal===i?"#334155":"#1e293b",background:preMeal===i?"#1e293b":"transparent",color:preMeal===i?"#e2e8f0":"#64748b",cursor:"pointer",whiteSpace:"nowrap",transition:"all .18s"}}>{m.emoji} {m.name}</button>
                     ))}
                   </div>
                 </div>
-                <div key={`${selected}-${activeMeal}-${carbLoad}`} style={{padding:"22px 20px",animation:"fi .3s ease"}}>
-                  {/* Meal header */}
+                <div key={`pre-${selected}-${preMeal}`} style={{padding:"18px 20px",animation:"fi .3s ease"}}>
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:12}}>
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <span style={{fontSize:28}}>{preData.meals[preMeal].emoji}</span>
+                        <div>
+                          <div style={{fontSize:16,fontWeight:700,color:"#f8fafc"}}>{preData.meals[preMeal].name}</div>
+                          <div style={{fontSize:10,fontFamily:mono,color:sess?.color}}>⏰ {preData.meals[preMeal].timing}</div>
+                        </div>
+                      </div>
+                      <p style={{fontSize:13,color:"#64748b",lineHeight:1.6,maxWidth:460}}>{preData.meals[preMeal].why}</p>
+                    </div>
+                    {preData.meals[preMeal].kcal>0&&(
+                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                        {showKcal&&<div style={{background:"#080f1a",border:"1px solid #1e293b",borderRadius:7,padding:"6px 12px",textAlign:"center"}}>
+                          <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kcal</div>
+                          <div style={{fontSize:18,fontWeight:700,color:sess?.color,fontFamily:mono}}>{kg?Math.round(preData.meals[preMeal].kcal*Math.max(.8,Math.min(1.4,kg/70))):preData.meals[preMeal].kcal}</div>
+                        </div>}
+                        {showKj&&<div style={{background:"#080f1a",border:"1px solid #1e293b",borderRadius:7,padding:"6px 12px",textAlign:"center"}}>
+                          <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kJ</div>
+                          <div style={{fontSize:18,fontWeight:700,color:"#a78bfa",fontFamily:mono}}>{Math.round((kg?Math.round(preData.meals[preMeal].kcal*Math.max(.8,Math.min(1.4,kg/70))):preData.meals[preMeal].kcal)*4.184)}</div>
+                        </div>}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:14}}>
+                    {preData.meals[preMeal].items.map((item,i)=>(
+                      <span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 10px",background:"#080f1a",border:"1px solid #0f172a",borderRadius:20,fontSize:12,color:"#94a3b8"}}>
+                        <span style={{color:sess?.color,fontSize:9}}>◆</span>{item}
+                      </span>
+                    ))}
+                  </div>
+                  {preData.avoid.length>0&&(
+                    <div style={{borderTop:"1px solid #0f172a",paddingTop:12}}>
+                      <div style={{fontSize:9,fontFamily:mono,color:"#f87171",letterSpacing:"0.1em",marginBottom:8}}>🚫 AVOID BEFORE THIS SESSION</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                        {preData.avoid.map((a,i)=>(
+                          <span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"3px 9px",background:"#150a0a",border:"1px solid #2d1515",borderRadius:20,fontSize:11,color:"#94a3b8"}}><span style={{color:"#f87171",fontSize:9}}>✕</span>{a}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── POST-RUN TAB ── */}
+            {sessionTab==="post-run"&&(
+              <div style={{background:"#0c1420",border:"1px solid #1e293b",borderTop:`2px solid ${carbLoad?"#60a5fa":sess?.color}`}}>
+                <div style={{padding:"10px 14px",borderBottom:"1px solid #0f172a",overflowX:"auto"}}>
+                  <div style={{display:"flex",gap:6,minWidth:"max-content"}}>
+                    {meals.map((m,i)=>(
+                      <button key={i} onClick={()=>setActiveMeal(i)} style={{padding:"6px 12px",borderRadius:6,fontSize:12,fontWeight:500,border:"1px solid",borderColor:activeMeal===i?"#334155":"#1e293b",background:activeMeal===i?"#1e293b":"transparent",color:activeMeal===i?"#e2e8f0":"#64748b",cursor:"pointer",whiteSpace:"nowrap",transition:"all .18s"}}>{m.emoji} {m.name}</button>
+                    ))}
+                  </div>
+                </div>
+                <div key={`post-${selected}-${activeMeal}-${carbLoad}`} style={{padding:"20px",animation:"fi .3s ease"}}>
                   <div style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:18}}>
-                    <span style={{fontSize:38}}>{meals[activeMeal]?.emoji}</span>
+                    <span style={{fontSize:36}}>{meals[activeMeal]?.emoji}</span>
                     <div style={{flex:1}}>
                       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:6}}>
                         <h3 style={{fontSize:18,fontWeight:700,color:"#f8fafc"}}>{meals[activeMeal]?.name}</h3>
                         {dishKcal&&(
                           <div style={{display:"flex",gap:6,flexShrink:0}}>
                             {showKcal&&<div style={{background:"#080f1a",border:"1px solid #1e293b",borderRadius:7,padding:"4px 10px",textAlign:"center"}}>
-                              <div style={{fontSize:9,fontFamily:"'Space Mono',monospace",color:"#475569"}}>kcal</div>
-                              <div style={{fontSize:16,fontWeight:700,color:sess?.color||"#4ade80",fontFamily:"'Space Mono',monospace"}}>{dishKcal.toLocaleString()}</div>
+                              <div style={{fontSize:9,fontFamily:mono,color:"#475569"}}>kcal</div>
+                              <div style={{fontSize:16,fontWeight:700,color:sess?.color||"#4ade80",fontFamily:mono}}>{dishKcal.toLocaleString()}</div>
                             </div>}
                             {showKj&&<div style={{background:"#080f1a",border:"1px solid #1e293b",borderRadius:7,padding:"4px 10px",textAlign:"center"}}>
-                              <div style={{fontSize:9,fontFamily:"'Space Mono',monospace",color:"#475569"}}>kJ</div>
-                              <div style={{fontSize:16,fontWeight:700,color:"#a78bfa",fontFamily:"'Space Mono',monospace"}}>{Math.round(dishKcal*4.184).toLocaleString()}</div>
+                              <div style={{fontSize:9,fontFamily:mono,color:"#475569"}}>kJ</div>
+                              <div style={{fontSize:16,fontWeight:700,color:"#a78bfa",fontFamily:mono}}>{Math.round(dishKcal*4.184).toLocaleString()}</div>
                             </div>}
                           </div>
                         )}
                       </div>
                       <p style={{fontSize:13,color:"#64748b",lineHeight:1.65,marginBottom:10}}>{meals[activeMeal]?.why}</p>
-                      <a href={meals[activeMeal]?.recipe} target="_blank" rel="noopener noreferrer"
-                        style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,color:"#60a5fa",textDecoration:"none",fontFamily:"'Space Mono',monospace",border:"1px solid #1e3a5f",padding:"5px 12px",borderRadius:6,background:"#0a1929"}}>
-                        📖 View Full Recipe ↗
-                      </a>
+                      <a href={meals[activeMeal]?.recipe} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,color:"#60a5fa",textDecoration:"none",fontFamily:mono,border:"1px solid #1e3a5f",padding:"5px 12px",borderRadius:6,background:"#0a1929"}}>📖 View Full Recipe ↗</a>
                     </div>
                   </div>
-                  {/* Scaled ingredients */}
                   <div style={{borderTop:"1px solid #0f172a",paddingTop:14}}>
-                    <div style={{fontSize:10,fontFamily:"'Space Mono',monospace",color:"#334155",letterSpacing:"0.1em",marginBottom:10}}>
-                      INGREDIENTS {kg?`— SCALED TO ${kg.toFixed(0)}KG`:"— ENTER WEIGHT TO PERSONALISE QUANTITIES"}
+                    <div style={{fontSize:10,fontFamily:mono,color:"#334155",letterSpacing:"0.1em",marginBottom:10}}>
+                      INGREDIENTS {kg?`— SCALED TO ${kg.toFixed(0)}KG`:"— ENTER WEIGHT TO PERSONALISE"}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:5}}>
                       {scaledIngs.map((ing,i)=>(
@@ -791,8 +817,8 @@ function App(){
                           </div>
                           {ing.kcal>0&&(
                             <div style={{display:"flex",gap:8,flexShrink:0}}>
-                              {showKcal&&<span style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#475569"}}>{ing.kcal} kcal</span>}
-                              {showKj&&<span style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#334155"}}>{Math.round(ing.kcal*4.184)} kJ</span>}
+                              {showKcal&&<span style={{fontSize:11,fontFamily:mono,color:"#475569"}}>{ing.kcal} kcal</span>}
+                              {showKj&&<span style={{fontSize:11,fontFamily:mono,color:"#334155"}}>{Math.round(ing.kcal*4.184)} kJ</span>}
                             </div>
                           )}
                         </div>
@@ -802,8 +828,8 @@ function App(){
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",background:"#0f1e2e",borderRadius:8,marginTop:6,border:`1px solid ${sess?.color||"#4ade80"}30`}}>
                         <span style={{fontSize:12,fontWeight:700,color:"#e2e8f0"}}>Total</span>
                         <div style={{display:"flex",gap:12}}>
-                          {showKcal&&<span style={{fontSize:13,fontWeight:700,fontFamily:"'Space Mono',monospace",color:sess?.color||"#4ade80"}}>{dishKcal.toLocaleString()} kcal</span>}
-                          {showKj&&<span style={{fontSize:13,fontWeight:700,fontFamily:"'Space Mono',monospace",color:"#a78bfa"}}>{Math.round(dishKcal*4.184).toLocaleString()} kJ</span>}
+                          {showKcal&&<span style={{fontSize:13,fontWeight:700,fontFamily:mono,color:sess?.color||"#4ade80"}}>{dishKcal.toLocaleString()} kcal</span>}
+                          {showKj&&<span style={{fontSize:13,fontWeight:700,fontFamily:mono,color:"#a78bfa"}}>{Math.round(dishKcal*4.184).toLocaleString()} kJ</span>}
                         </div>
                       </div>
                     )}
@@ -812,47 +838,42 @@ function App(){
               </div>
             )}
 
-            {/* HYDRATION TAB */}
-            {tab==="hydration"&&(
+            {/* ── HYDRATION TAB ── */}
+            {sessionTab==="hydration"&&(
               <div style={{background:"#0c1420",border:"1px solid #1e293b",padding:"24px 20px",animation:"fi .3s ease"}}>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:14}}>
                   <div style={{background:"#080f1a",borderRadius:12,padding:18}}>
-                    <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#60a5fa",letterSpacing:"0.1em",marginBottom:10}}>💧 HYDRATION GUIDANCE</div>
-                    <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.65}}>
-                      {hydration?<><strong style={{color:"#e2e8f0"}}>{hydration}ml ({(hydration/1000).toFixed(1)}L)</strong> — </>:"Enter weight for a personalised target. "}
-                      Sip steadily over 1–2 hrs. Every 1kg lost = 1L to replace.
-                    </p>
+                    <div style={{fontSize:11,fontFamily:mono,color:"#60a5fa",letterSpacing:"0.1em",marginBottom:10}}>💧 HYDRATION GUIDANCE</div>
+                    <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.65}}>{hydration?<><strong style={{color:"#e2e8f0"}}>{hydration}ml ({(hydration/1000).toFixed(1)}L)</strong> — </>:"Enter weight for a personalised target. "}Sip steadily over 1–2 hrs. Every 1kg lost = 1L to replace.</p>
                   </div>
                   <div style={{background:"#080f1a",borderRadius:12,padding:18}}>
-                    <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:prof.color,letterSpacing:"0.1em",marginBottom:10}}>{prof.icon} {prof.label.toUpperCase()}</div>
+                    <div style={{fontSize:11,fontFamily:mono,color:prof.color,letterSpacing:"0.1em",marginBottom:10}}>{prof.icon} {prof.label.toUpperCase()}</div>
                     <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.65}}>{prof.elec}</p>
                   </div>
                   {prof.cramp&&(
                     <div style={{background:`${prof.color}12`,border:`1px solid ${prof.color}30`,borderRadius:12,padding:18,gridColumn:"1 / -1"}}>
-                      <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:prof.color,letterSpacing:"0.1em",marginBottom:8}}>⚡ CRAMPING PROTOCOL</div>
+                      <div style={{fontSize:11,fontFamily:mono,color:prof.color,letterSpacing:"0.1em",marginBottom:8}}>⚡ CRAMPING PROTOCOL</div>
                       <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.65,marginBottom:10}}>{prof.cramp}</p>
                       <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                         {["Spinach","Pumpkin seeds","Dark chocolate","Almonds","Bananas","Pickle juice","Magnesium glycinate"].map(f=>(
-                          <span key={f} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 10px",background:"#0f172a",border:"1px solid #1e293b",borderRadius:20,fontSize:12,color:"#94a3b8"}}>
-                            <span style={{color:prof.color}}>◆</span>{f}
-                          </span>
+                          <span key={f} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 10px",background:"#0f172a",border:"1px solid #1e293b",borderRadius:20,fontSize:12,color:"#94a3b8"}}><span style={{color:prof.color}}>◆</span>{f}</span>
                         ))}
                       </div>
                     </div>
                   )}
                   <div style={{background:"#080f1a",borderRadius:12,padding:18}}>
-                    <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#4ade80",letterSpacing:"0.1em",marginBottom:10}}>🧂 ELECTROLYTE FOODS</div>
+                    <div style={{fontSize:11,fontFamily:mono,color:"#4ade80",letterSpacing:"0.1em",marginBottom:10}}>🧂 ELECTROLYTE FOODS</div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                       {[["Sodium","Salted nuts, miso, broth"],["Potassium","Banana, potato, spinach"],["Magnesium","Dark choc, seeds, legumes"],["Calcium","Dairy, fortified oat milk"]].map(([m,s])=>(
                         <div key={m} style={{padding:"8px 10px",background:"#0c1420",borderRadius:8,border:"1px solid #1e293b"}}>
-                          <div style={{fontSize:10,fontFamily:"'Space Mono',monospace",color:"#4ade80",marginBottom:2}}>{m}</div>
+                          <div style={{fontSize:10,fontFamily:mono,color:"#4ade80",marginBottom:2}}>{m}</div>
                           <div style={{fontSize:12,color:"#64748b"}}>{s}</div>
                         </div>
                       ))}
                     </div>
                   </div>
                   <div style={{background:"#080f1a",borderRadius:12,padding:18}}>
-                    <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#f59e0b",letterSpacing:"0.1em",marginBottom:10}}>🟡 URINE COLOUR GUIDE</div>
+                    <div style={{fontSize:11,fontFamily:mono,color:"#f59e0b",letterSpacing:"0.1em",marginBottom:10}}>🟡 URINE COLOUR GUIDE</div>
                     {[["Pale straw","#e8e062","Well hydrated ✓"],["Yellow","#d4b800","Slightly low — drink up"],["Dark yellow","#b07d00","Dehydrated — act now"],["Amber/brown","#7c4a00","Severely dehydrated 🚨"]].map(([label,color,status])=>(
                       <div key={label} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
                         <div style={{width:14,height:14,borderRadius:"50%",background:color,flexShrink:0}}/>
@@ -864,12 +885,12 @@ function App(){
               </div>
             )}
 
-            {/* TIPS TAB */}
-            {tab==="tips"&&!carbLoad&&selected&&(
+            {/* ── TIPS TAB ── */}
+            {sessionTab==="tips"&&!carbLoad&&selected&&(
               <div style={{background:"#0c1420",border:"1px solid #1e293b",padding:"24px 20px",animation:"fi .3s ease"}}>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:14}}>
                   <div style={{background:"#080f1a",borderRadius:12,padding:18}}>
-                    <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#f87171",letterSpacing:"0.1em",marginBottom:12}}>🚫 AVOID</div>
+                    <div style={{fontSize:11,fontFamily:mono,color:"#f87171",letterSpacing:"0.1em",marginBottom:12}}>🚫 AVOID</div>
                     {(AVOID[selected]||[]).map((item,i)=>(
                       <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:i<AVOID[selected].length-1?"1px solid #0f172a":"none",fontSize:13,color:"#94a3b8"}}>
                         <span style={{color:"#f87171",fontSize:10,flexShrink:0}}>✕</span>{item}
@@ -877,35 +898,36 @@ function App(){
                     ))}
                   </div>
                   <div style={{background:`${sess?.color}0d`,border:`1px solid ${sess?.color}25`,borderRadius:12,padding:18}}>
-                    <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:sess?.color,letterSpacing:"0.1em",marginBottom:12}}>💡 COACH'S TIP</div>
+                    <div style={{fontSize:11,fontFamily:mono,color:sess?.color,letterSpacing:"0.1em",marginBottom:12}}>💡 COACH'S TIP</div>
                     <p style={{fontSize:14,color:"#cbd5e1",lineHeight:1.7}}>{TIPS[selected]}</p>
                   </div>
                   <div style={{background:"#080f1a",borderRadius:12,padding:18,gridColumn:"1 / -1"}}>
-                    <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#a78bfa",letterSpacing:"0.1em",marginBottom:8}}>⏱️ TIMING & SCIENCE</div>
-                    <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:sess?.color,letterSpacing:"0.04em",marginBottom:8}}>{TIMING[selected]}</div>
+                    <div style={{fontSize:11,fontFamily:mono,color:"#a78bfa",letterSpacing:"0.1em",marginBottom:8}}>⏱️ TIMING & SCIENCE</div>
+                    <div style={{fontFamily:bebas,fontSize:26,color:sess?.color,letterSpacing:"0.04em",marginBottom:8}}>{TIMING[selected]}</div>
                     <p style={{fontSize:13,color:"#64748b",lineHeight:1.6}}>After exercise, GLUT4 transporters are maximally active — muscles absorb glucose without needing insulin. This anabolic window closes progressively over 2–4 hours. Earlier is always better.</p>
                   </div>
                 </div>
               </div>
             )}
-            {tab==="tips"&&carbLoad&&(
+            {sessionTab==="tips"&&carbLoad&&(
               <div style={{background:"#0c1420",border:"1px solid #1e293b",padding:"24px 20px",animation:"fi .3s ease"}}>
                 <div style={{background:"#0a1929",border:"1px solid #1e3a5f",borderRadius:12,padding:20}}>
-                  <div style={{fontSize:11,fontFamily:"'Space Mono',monospace",color:"#60a5fa",letterSpacing:"0.1em",marginBottom:14}}>📋 CARB LOADING PROTOCOL</div>
+                  <div style={{fontSize:11,fontFamily:mono,color:"#60a5fa",letterSpacing:"0.1em",marginBottom:14}}>📋 CARB LOADING PROTOCOL</div>
                   {["Start 2–3 days before race day — not just the night before.","Eat every 2–3 hours. Spread carbs across 5–6 meals, don't binge in one sitting.","Choose low-fibre carbs: white rice, white bread, pasta, bagels, bananas.","Cut back on fat and protein temporarily to make calorie room for carbs.","Avoid new foods or restaurants — race week is not the time to experiment.","You may feel heavier — each gram of glycogen holds ~3g of water. This is completely normal.","Taper your training alongside the carb load — you are storing energy, not burning it."].map((tip,i)=>(
                     <div key={i} style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-start"}}>
-                      <div style={{width:22,height:22,borderRadius:"50%",background:"#1e3a5f",border:"1px solid #60a5fa55",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Space Mono',monospace",fontSize:10,color:"#60a5fa",flexShrink:0}}>{i+1}</div>
+                      <div style={{width:22,height:22,borderRadius:"50%",background:"#1e3a5f",border:"1px solid #60a5fa55",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,color:"#60a5fa",flexShrink:0}}>{i+1}</div>
                       <span style={{fontSize:13,color:"#94a3b8",lineHeight:1.65}}>{tip}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+
           </div>
         )}
 
         {!selected&&!carbLoad&&(
-          <div style={{textAlign:"center",padding:"50px 20px",color:"#1e293b",fontFamily:"'Space Mono',monospace",fontSize:13,letterSpacing:"0.08em"}}>
+          <div style={{textAlign:"center",padding:"50px 20px",color:"#1e293b",fontFamily:mono,fontSize:13,letterSpacing:"0.08em"}}>
             ↑ SELECT A SESSION OR ENABLE CARB LOADING TO BEGIN
           </div>
         )}
