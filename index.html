@@ -68,12 +68,27 @@ const calcMacros=(kg,sid,mins,carbLoad)=>{
     const kcal=c*4+p*4+f*9;
     return{carbs:c,protein:p,fat:f,kcal,kj:Math.round(kcal*4.184)};
   }
-  const base={easy:{c:3.5,p:.28,f:.14},interval:{c:6.5,p:.40,f:.10},tempo:{c:5.5,p:.35,f:.11},midweek_long:{c:6.0,p:.36,f:.13},long:{c:8.5,p:.44,f:.11},rest:{c:2.8,p:.33,f:.17}};
+  // Evidence base: ACSM/ISSN post-exercise recovery targets
+  // Carbs: 1.0–1.2g/kg/hr depleted (ACSM 2016 Joint Position Statement; Thomas et al.)
+  // Protein: 0.3g/kg per session (ISSN Nutrient Timing Position Stand; Kerksick et al. 2017)
+  // Fat: 0.5–0.8g/kg/day maintenance; ~0.15–0.25g/kg per post-run window (ACSM)
+  // Rest day: daily maintenance framing — moderate carbs, full protein, higher fat
+  // Duration factor scales carbs only (longer run = more glycogen depleted)
+  const base={
+    easy:     {c:1.0, p:0.30, f:0.20}, // ~60min aerobic: 1.0g/kg carbs post-run
+    interval: {c:1.2, p:0.30, f:0.15}, // high intensity: max 1.2g/kg carbs, lean on fat
+    tempo:    {c:1.1, p:0.30, f:0.18}, // LT effort: between easy and interval
+    midweek_long:{c:1.2,p:0.30,f:0.20},// moderate long: 1.2g/kg carbs
+    long:     {c:1.2, p:0.30, f:0.20}, // long run: 1.2g/kg/hr × hrs depleted (df applied)
+    rest:     {c:3.0, p:0.30, f:0.80}, // rest: daily maintenance, ~3g/kg carbs total day
+  };
   const m=base[sid]||base.easy;
-  const df=mins?Math.max(.7,Math.min(1.5,mins/(DEFAULT_DUR[sid]||60))):1;
+  // Duration factor: scales carbs for actual session length vs default
+  // Only applied to run sessions (not rest). Long run gets strongest scaling.
+  const df=sid==="rest"?1:mins?Math.max(0.7,Math.min(2.0,mins/(DEFAULT_DUR[sid]||60))):1;
   const carbs=Math.round(m.c*kg*df);
-  const protein=Math.round(m.p*kg*df);
-  const fat=Math.round(m.f*kg*df);
+  const protein=Math.round(m.p*kg); // protein flat per kg — not duration-scaled
+  const fat=Math.round(m.f*kg);     // fat flat per kg — not duration-scaled
   const kcal=carbs*4+protein*4+fat*9;
   return{carbs,protein,fat,kcal,kj:Math.round(kcal*4.184)};
 };
@@ -312,6 +327,7 @@ function App(){
   const [sweatKey,setSweatKey]=useState("normal");
   const [sessionTab,setSessionTab]=useState("pre-run"); // pre-run | post-run | hydration | tips
   const [eu,setEu]=useState("both");
+  const [showEvidence,setShowEvidence]=useState(false);
 
   const kg=useMemo(()=>weight?(unit==="kg"?parseFloat(weight):parseFloat(weight)*.453592):null,[weight,unit]);
   const sess=useMemo(()=>SESSIONS.find(s=>s.id===selected),[selected]);
@@ -430,62 +446,87 @@ function App(){
           </div>
         </div>
 
-        {/* ── SESSION DURATIONS — own card, always visible ── */}
-        <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:14,padding:20,marginBottom:16}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div>
-              <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:3}}>SESSION DURATIONS</div>
-              <div style={{fontSize:12,color:"#334155"}}>Adjust to match your actual training time — burn estimates and macros update automatically.</div>
-            </div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14}}>
-            {SESSIONS.filter(s=>s.id!=="rest").map(s=>(
-              <div key={s.id} style={{background:"#080f1a",borderRadius:10,padding:"12px 14px",border:"1px solid",borderColor:selected===s.id?s.color:"#0f172a"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <div style={{display:"flex",alignItems:"center",gap:7}}>
-                    <span style={{fontSize:15}}>{s.icon}</span>
-                    <span style={{fontSize:12,color:selected===s.id?s.color:"#94a3b8",fontWeight:500}}>{s.label}</span>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <input type="number" min="0" max="300" value={durations[s.id]||""} onChange={e=>setDur(s.id,e.target.value)}
-                      style={{width:52,background:"#040a0f",border:"1px solid",borderColor:selected===s.id?s.color:"#1e293b",borderRadius:6,padding:"3px 6px",color:"#f8fafc",fontSize:13,fontFamily:mono,outline:"none",textAlign:"center"}}/>
-                    <span style={{fontSize:11,color:"#475569"}}>min</span>
-                  </div>
-                </div>
-                <div style={{position:"relative",paddingTop:4}}>
-                  <input type="range" min="10" max="240" value={durations[s.id]||DEFAULT_DUR[s.id]} onChange={e=>setDur(s.id,e.target.value)}
-                    style={{width:"100%",accentColor:s.color,appearance:"none",WebkitAppearance:"none",height:6,borderRadius:3,outline:"none",cursor:"pointer",
-                      background:`linear-gradient(to right, ${s.color} ${Math.round(((durations[s.id]||DEFAULT_DUR[s.id])-10)/(240-10)*100)}%, #1e293b ${Math.round(((durations[s.id]||DEFAULT_DUR[s.id])-10)/(240-10)*100)}%)`}}/>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
-                  <span style={{fontSize:9,color:"#334155",fontFamily:mono}}>10 min</span>
-                  <span style={{fontSize:9,color:s.color,fontFamily:mono,fontWeight:700}}>{durations[s.id]||DEFAULT_DUR[s.id]} min</span>
-                  <span style={{fontSize:9,color:"#334155",fontFamily:mono}}>240 min</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-                {/* ── SESSION PICKER ── */}
+        {/* ── SESSION PICKER ── */}
         {!carbLoad&&(
           <div style={{marginBottom:16}}>
             <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>TODAY'S SESSION</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(210px,1fr))",gap:10}}>
+            {/* Button strip */}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
               {SESSIONS.map(s=>(
-                <div key={s.id} onClick={()=>setSelected(s.id)}
-                  style={{cursor:"pointer",border:"1px solid",borderColor:selected===s.id?s.color:"#1e293b",borderRadius:12,padding:14,background:selected===s.id?"#0f1e2e":"#0c1420",transition:"all .18s",position:"relative",overflow:"hidden"}}>
-                  {selected===s.id&&<div style={{position:"absolute",top:0,left:0,width:3,height:"100%",background:s.color}}/>}
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                    <span style={{fontSize:22}}>{s.icon}</span>
-                    <Pill color={s.color}>{s.tag}</Pill>
-                  </div>
-                  <div style={{fontWeight:600,fontSize:14,marginBottom:3,color:selected===s.id?"#f8fafc":"#cbd5e1"}}>{s.label}</div>
-                  <div style={{fontSize:11,color:"#475569",marginBottom:6}}>{s.description}</div>
-                  {s.id!=="rest"&&<div style={{fontFamily:mono,fontSize:10,color:selected===s.id?s.color:"#334155"}}>{durations[s.id]||DEFAULT_DUR[s.id]} min</div>}
-                </div>
+                <button key={s.id} onClick={()=>setSelected(s.id===selected?null:s.id)}
+                  style={{cursor:"pointer",display:"flex",alignItems:"center",gap:7,padding:"9px 14px",borderRadius:10,border:"1px solid",borderColor:selected===s.id?s.color:"#1e293b",background:selected===s.id?`${s.color}14`:"#0c1420",color:selected===s.id?s.color:"#64748b",fontSize:13,fontWeight:selected===s.id?700:400,transition:"all .18s",flexShrink:0}}>
+                  <span style={{fontSize:16}}>{s.icon}</span>
+                  <span>{s.label}</span>
+                  {selected===s.id&&<span style={{fontSize:9,background:s.color,color:"#040a0f",borderRadius:4,padding:"1px 5px",fontFamily:mono,fontWeight:700,marginLeft:2}}>✓</span>}
+                </button>
               ))}
             </div>
+            {/* Expanded detail card for selected session — includes duration slider */}
+            {selected&&sess&&(
+              <div style={{border:"1px solid",borderColor:sess.color,borderRadius:12,background:"#0c1420",animation:"fi .2s ease",position:"relative",overflow:"hidden"}}>
+                <div style={{position:"absolute",top:0,left:0,width:4,height:"100%",background:sess.color}}/>
+                <div style={{padding:"16px 20px 20px",paddingLeft:24}}>
+
+                  {/* Session info row */}
+                  <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+                    <span style={{fontSize:28}}>{sess.icon}</span>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                        <span style={{fontSize:16,fontWeight:700,color:"#f8fafc"}}>{sess.label}</span>
+                        <Pill color={sess.color}>{sess.tag}</Pill>
+                      </div>
+                      <div style={{fontSize:12,color:"#64748b"}}>{sess.description}</div>
+                    </div>
+                  </div>
+
+                  {/* Duration slider — only for non-rest sessions */}
+                  {sess.id!=="rest"&&(
+                    <div style={{marginBottom:16,background:"#080f1a",borderRadius:10,padding:"12px 16px",border:`1px solid ${sess.color}30`}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                        <div style={{fontSize:10,fontFamily:mono,color:"#475569",letterSpacing:"0.1em"}}>SESSION DURATION</div>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <input type="number" min="10" max="300" value={durations[sess.id]||DEFAULT_DUR[sess.id]}
+                            onChange={e=>setDur(sess.id,e.target.value)}
+                            style={{width:56,background:"#040a0f",border:`1px solid ${sess.color}60`,borderRadius:6,padding:"4px 8px",color:"#f8fafc",fontSize:14,fontFamily:mono,outline:"none",textAlign:"center"}}/>
+                          <span style={{fontSize:11,color:"#475569"}}>min</span>
+                        </div>
+                      </div>
+                      <input type="range" min="10" max="240"
+                        value={durations[sess.id]||DEFAULT_DUR[sess.id]}
+                        onChange={e=>setDur(sess.id,e.target.value)}
+                        style={{width:"100%",appearance:"none",WebkitAppearance:"none",height:6,borderRadius:3,outline:"none",cursor:"pointer",
+                          background:`linear-gradient(to right,${sess.color} ${Math.round(((durations[sess.id]||DEFAULT_DUR[sess.id])-10)/(240-10)*100)}%,#1e293b ${Math.round(((durations[sess.id]||DEFAULT_DUR[sess.id])-10)/(240-10)*100)}%)`}}/>
+                      <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+                        <span style={{fontSize:9,color:"#334155",fontFamily:mono}}>10 min</span>
+                        <span style={{fontSize:11,fontWeight:700,color:sess.color,fontFamily:mono}}>{durations[sess.id]||DEFAULT_DUR[sess.id]} min</span>
+                        <span style={{fontSize:9,color:"#334155",fontFamily:mono}}>240 min</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick stats row */}
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {[
+                      burned&&kg&&{label:"Est. Burn",value:`${burned.kcal.toLocaleString()} kcal`,color:"#f87171"},
+                      macros&&kg&&{label:"Post-run Carbs",value:`${macros.carbs}g`,color:sess.color},
+                      macros&&kg&&{label:"Post-run Protein",value:`${macros.protein}g`,color:"#f59e0b"},
+                    ].filter(Boolean).map(({label,value,color})=>(
+                      <div key={label} style={{background:"#080f1a",borderRadius:8,padding:"6px 12px",border:"1px solid #0f172a"}}>
+                        <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>{label}</div>
+                        <div style={{fontSize:15,fontWeight:700,fontFamily:mono,color}}>{value}</div>
+                      </div>
+                    ))}
+                    {!kg&&<div style={{fontSize:12,color:"#334155",padding:"6px 0"}}>Enter your weight above to see personalised targets</div>}
+                  </div>
+
+                </div>
+              </div>
+            )}
+            {!selected&&(
+              <div style={{textAlign:"center",padding:"20px",color:"#1e293b",fontFamily:mono,fontSize:12,letterSpacing:"0.08em",border:"1px dashed #0f172a",borderRadius:12}}>
+                SELECT A SESSION ABOVE TO GET YOUR NUTRITION PLAN
+              </div>
+            )}
           </div>
         )}
 
@@ -493,15 +534,22 @@ function App(){
         {/* ── STATS ROW ── */}
         {(selected||carbLoad)&&(
           <div style={{animation:"fi .4s ease",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12,marginBottom:12}}>
-            {macros&&(
+            {macros&&!carbLoad&&(
               <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:12,padding:"16px 20px"}}>
-                <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:10}}>
-                  {carbLoad?"CARB LOAD TARGETS":"POST-RUN MACRO TARGETS"}
-                  {kg&&<span style={{color:"#334155"}}> / {kg.toFixed(1)}kg{dur&&!carbLoad?` · ${dur}min`:""}</span>}
-  
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
+                  <div>
+                    <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:2}}>
+                      POST-RUN MACRO TARGETS
+                      {kg&&<span style={{color:"#334155"}}> / {kg.toFixed(1)}kg{dur?` · ${dur}min`:""}</span>}
+                    </div>
+                    <div style={{fontSize:10,color:"#334155",lineHeight:1.4}}>Recovery window targets — not full day intake</div>
+                  </div>
+                  <button onClick={()=>setShowEvidence(x=>!x)} style={{fontSize:10,fontFamily:mono,color:"#475569",background:"#080f1a",border:"1px solid #1e293b",borderRadius:6,padding:"4px 10px",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
+                    {showEvidence?"▲ HIDE":"📚 EVIDENCE"}
+                  </button>
                 </div>
-                <MacroBar {...macros}/>
-                <div style={{marginTop:14,borderTop:"1px solid #0f172a",paddingTop:12,display:"flex",gap:8}}>
+                <MacroBar carbs={macros.carbs} protein={macros.protein} fat={macros.fat}/>
+                <div style={{marginTop:14,borderTop:"1px solid #0f172a",paddingTop:12,display:"flex",gap:8,flexWrap:"wrap"}}>
                   {showKcal&&<div style={{background:"#080f1a",borderRadius:8,padding:"8px 12px",minWidth:80}}>
                     <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kcal</div>
                     <div style={{fontSize:20,fontWeight:700,color:sess?.color||"#60a5fa",fontFamily:mono}}>{macros.kcal.toLocaleString()}</div>
@@ -510,7 +558,33 @@ function App(){
                     <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kJ</div>
                     <div style={{fontSize:20,fontWeight:700,color:"#a78bfa",fontFamily:mono}}>{macros.kj.toLocaleString()}</div>
                   </div>}
+                  <div style={{background:"#080f1a",borderRadius:8,padding:"8px 12px",flex:1,minWidth:160}}>
+                    <div style={{fontSize:9,fontFamily:mono,color:"#4ade80",marginBottom:4,letterSpacing:"0.08em"}}>PER KG BREAKDOWN</div>
+                    <div style={{fontSize:11,color:"#64748b"}}>
+                      <span style={{color:"#4ade80"}}>{(macros.carbs/kg).toFixed(1)}g/kg</span> carbs · <span style={{color:"#f59e0b"}}>{(macros.protein/kg).toFixed(2)}g/kg</span> protein · <span style={{color:"#60a5fa"}}>{(macros.fat/kg).toFixed(2)}g/kg</span> fat
+                    </div>
+                  </div>
                 </div>
+                {showEvidence&&(
+                  <div style={{marginTop:14,borderTop:"1px solid #0f172a",paddingTop:14,animation:"fi .2s ease"}}>
+                    <div style={{fontSize:10,fontFamily:mono,color:"#a78bfa",letterSpacing:"0.1em",marginBottom:10}}>📚 EVIDENCE BASE</div>
+                    {[
+                      {label:"Carbohydrates",color:"#4ade80",value:selected==="rest"?"3g/kg/day maintenance":"1.0–1.2g/kg post-exercise",source:"ACSM Joint Position Statement (Thomas et al., 2016). Med Sci Sports Exerc 48(3):543–68.",detail:selected==="rest"?"On rest days, carbohydrate intake of ~3g/kg/day maintains glycogen without excess. ACSM recommends 5–7g/kg/day total for moderate training — this target represents the post-session/day-off portion.":"Optimal glycogen resynthesis requires 1.0–1.2g carbohydrate/kg/hour in the 4–6hr post-exercise window. Harder sessions (interval, tempo) warrant the full 1.2g/kg. Easy runs tolerate 1.0g/kg."},
+                      {label:"Protein",color:"#f59e0b",value:"0.3g/kg per session",source:"ISSN Nutrient Timing Position Stand (Kerksick et al., 2017). J Int Soc Sports Nutr 14:33.",detail:"0.3g/kg of high-quality protein post-exercise maximally stimulates muscle protein synthesis. This threshold is consistent across endurance and strength modalities. Distribution across 4–5 meals is recommended for total daily protein of 1.4–1.7g/kg/day for endurance athletes."},
+                      {label:"Fat",color:"#60a5fa",value:"0.15–0.25g/kg post-run",source:"ACSM/AND/DC Joint Position (Rodriguez et al., 2009). J Am Diet Assoc 109(3):509–27.",detail:"Fat intake is not prioritised in the immediate post-run window as it slows gastric emptying and may impair carbohydrate absorption. However, total daily fat should be 0.5–1.0g/kg/day to provide essential fatty acids and fat-soluble vitamins. This target reflects ~20–30% of daily fat needs in one recovery meal."},
+                    ].map(({label,color,value,source,detail})=>(
+                      <div key={label} style={{marginBottom:12,background:"#080f1a",borderRadius:10,padding:"12px 14px",border:`1px solid ${color}20`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                          <div style={{width:8,height:8,borderRadius:"50%",background:color}}/>
+                          <span style={{fontSize:11,fontWeight:700,color}}>{label}</span>
+                          <span style={{fontSize:10,fontFamily:mono,color:"#475569",marginLeft:"auto"}}>{value}</span>
+                        </div>
+                        <p style={{fontSize:12,color:"#64748b",lineHeight:1.6,marginBottom:6}}>{detail}</p>
+                        <div style={{fontSize:10,color:"#334155",fontStyle:"italic",lineHeight:1.4}}>📄 {source}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {burned&&!carbLoad&&(
