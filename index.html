@@ -18,8 +18,8 @@ body{background:#040a0f;color:#e2e8f0;font-family:'DM Sans',sans-serif;-webkit-f
 ::-webkit-scrollbar-thumb{background:#1e293b;border-radius:4px}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
 input[type=date]{color-scheme:dark}
-input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;outline:none;cursor:pointer}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;cursor:pointer}
+input[type=range]{-webkit-appearance:none;appearance:none;border-radius:3px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid #040a0f;box-shadow:0 0 0 1px rgba(255,255,255,0.1)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 </style>
@@ -35,51 +35,7 @@ const fmtToday=TODAY.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",mo
 function daysUntil(ds){const d=new Date(ds+"T00:00:00");return Math.ceil((d-TODAY)/86400000);}
 function weeksUntil(ds){return Math.max(0,Math.floor(daysUntil(ds)/7));}
 
-// ─── TRAINING PHASE ───────────────────────────────────────────────────────────
-// Each phase defines HOW nutrition priorities actually change — not just a label
-const PHASES=[
-  {minWeeks:17,maxWeeks:999,label:"Base Building",emoji:"🏗️",color:"#4ade80",
-   headline:"Build volume. Protect the engine.",
-   summary:"Training load is moderate. Focus is on consistent fuelling rather than aggressive recovery. Your body is adapting aerobically — give it steady fuel.",
-   carbMult:1.0,proteinMult:1.0,
-   priorities:["Consistency over perfection — eat well every day","Post-run carbs within 45 min to support daily adaptation","Protein 0.3g/kg per session for muscle maintenance","Iron-rich foods 2–3x/week (long runs cause foot-strike haemolysis)"],
-   warning:null},
-  {minWeeks:11,maxWeeks:16,label:"Build Phase",emoji:"📈",color:"#60a5fa",
-   headline:"Volume is rising. Recovery nutrition matters more now.",
-   summary:"Weekly mileage is climbing. Glycogen depletion becomes real after sessions. The post-run window is critical — missing it now accumulates fatigue over weeks.",
-   carbMult:1.1,proteinMult:1.05,
-   priorities:["Post-run carbs within 30 min — window is getting shorter","Carb targets are multiplied ×1.1 to match higher training volume","Extra sleep and anti-inflammatory foods on double-session days","Monitor energy — chronic fatigue here = overtraining"],
-   warning:"Macro targets on this page are automatically ×1.1 vs base."},
-  {minWeeks:7,maxWeeks:10,label:"Peak Training",emoji:"🔥",color:"#f59e0b",
-   headline:"Highest load. Every session needs maximum recovery.",
-   summary:"This is the hardest block. You're running more and harder than ever. Glycogen stores will be depleted daily. Nutrition is the difference between adapting and breaking down.",
-   carbMult:1.2,proteinMult:1.1,
-   priorities:["Eat within 20 min after every hard session — no exceptions","Carbs ×1.2 — you are genuinely depleting more glycogen","Daily protein target: 1.6–1.8g/kg total","Sleep 8–9 hrs if possible — growth hormone peaks overnight","Consider a daily banana before bed for overnight glycogen"],
-   warning:"Macro targets on this page are ×1.2. Do not undereat this block."},
-  {minWeeks:3,maxWeeks:6,label:"Taper",emoji:"🎯",color:"#f97316",
-   headline:"Ease off the volume. Keep the carbs up.",
-   summary:"Mileage drops 30–50% but nutrition should barely change. Your muscles are supercompensating — they store MORE glycogen when load drops. This is not the time to diet.",
-   carbMult:1.15,proteinMult:1.0,
-   priorities:["Keep carb intake high despite lower training load","Carbs ×1.15 — your muscles are actively storing glycogen now","Reduce fibre and gut-challenging foods in final 2 weeks","Cut alcohol completely — it impairs glycogen storage","Sleep is now as important as any run"],
-   warning:"Do not cut calories during taper. Your body needs fuel to store glycogen."},
-  {minWeeks:1,maxWeeks:2,label:"Race Week",emoji:"🏅",color:"#a78bfa",
-   headline:"Carb load. Protect the gut. Stick to the known.",
-   summary:"Glycogen supercompensation is your goal. 10g carbs/kg/day for 2–3 days. Low fibre. No new foods. Your gut is fragile — don't experiment this week.",
-   carbMult:1.3,proteinMult:0.85,
-   priorities:["10g carbs/kg/day for 2–3 days pre-race","Low fat, low fibre — easy on the gut","No new restaurants, no unfamiliar foods","Hydrate consistently — aim for pale straw urine","Race morning: familiar, tested pre-run meal 2.5–3 hrs before start"],
-   warning:"Activate Carb Load Mode below. Use race week meals."},
-  {minWeeks:0,maxWeeks:0,label:"Race Day!",emoji:"🏁",color:"#4ade80",
-   headline:"You're ready. Trust your training.",
-   summary:"Nothing you eat today will significantly help — and nothing you eat wrong will significantly hurt if you've fuelled well this week. Stick to the plan.",
-   carbMult:1.0,proteinMult:1.0,
-   priorities:["Pre-race meal: familiar, tested, 2.5–3 hrs before gun","Gel or banana 45 min before start if needed","Mid-race: 30–60g carbs/hr from mile 6 onward","Post-race: start with liquid, then real food within 1 hr"],
-   warning:null},
-];
-function getPhase(weeks){
-  if(weeks===null)return null;
-  return PHASES.find(p=>weeks>=p.minWeeks&&weeks<=p.maxWeeks)||PHASES[0];
-}
-
+// ─── SESSIONS ─────────────────────────────────────────────────────────────────
 // ─── SESSIONS ─────────────────────────────────────────────────────────────────
 const SESSIONS=[
   {id:"easy",label:"Easy Run",icon:"🏃",tag:"AEROBIC BASE",color:"#4ade80",description:"Conversational pace",met:7.5},
@@ -90,7 +46,7 @@ const SESSIONS=[
   {id:"rest",label:"Rest / Recovery",icon:"🌙",tag:"RECOVERY",color:"#94a3b8",description:"Active rest or off",met:2},
 ];
 
-const DEFAULT_DUR={easy:60,interval:75,tempo:55,midweek_long:90,long:150,rest:0};
+const DEFAULT_DUR={easy:60,interval:45,tempo:55,midweek_long:90,long:150,rest:0};
 
 // ─── CALCULATIONS ─────────────────────────────────────────────────────────────
 const calcBurned=(met,kg,mins)=>{
@@ -105,23 +61,21 @@ const calcReplenish=(burned,kg,sid)=>{
   const kcal=Math.max(Math.round(burned.kcal*rate),200);
   return{kcal,kj:Math.round(kcal*4.184),rate};
 };
-const calcMacros=(kg,sid,mins,carbLoad,phase)=>{
+const calcMacros=(kg,sid,mins,carbLoad)=>{
   if(!kg)return null;
   if(carbLoad){
     const c=Math.round(10*kg),p=Math.round(.25*kg),f=Math.round(.08*kg);
     const kcal=c*4+p*4+f*9;
-    return{carbs:c,protein:p,fat:f,kcal,kj:Math.round(kcal*4.184),phaseAdj:false};
+    return{carbs:c,protein:p,fat:f,kcal,kj:Math.round(kcal*4.184)};
   }
   const base={easy:{c:3.5,p:.28,f:.14},interval:{c:6.5,p:.40,f:.10},tempo:{c:5.5,p:.35,f:.11},midweek_long:{c:6.0,p:.36,f:.13},long:{c:8.5,p:.44,f:.11},rest:{c:2.8,p:.33,f:.17}};
   const m=base[sid]||base.easy;
   const df=mins?Math.max(.7,Math.min(1.5,mins/(DEFAULT_DUR[sid]||60))):1;
-  const cm=phase?phase.carbMult:1;
-  const pm=phase?phase.proteinMult:1;
-  const carbs=Math.round(m.c*kg*df*cm);
-  const protein=Math.round(m.p*kg*df*pm);
+  const carbs=Math.round(m.c*kg*df);
+  const protein=Math.round(m.p*kg*df);
   const fat=Math.round(m.f*kg*df);
   const kcal=carbs*4+protein*4+fat*9;
-  return{carbs,protein,fat,kcal,kj:Math.round(kcal*4.184),phaseAdj:phase&&(cm!==1||pm!==1)};
+  return{carbs,protein,fat,kcal,kj:Math.round(kcal*4.184)};
 };
 
 // ─── SWEAT PROFILES ───────────────────────────────────────────────────────────
@@ -345,88 +299,6 @@ const ReplenishCard=({burned,replenish,dishKcal,dishName,sessionColor,eu})=>{
   );
 };
 
-// ─── PHASE EXPLAINER ─────────────────────────────────────────────────────────
-// This is the section that makes the link between phase and nutrition concrete
-function PhaseNutritionBanner({phase,macros,carbLoad}){
-  if(!phase)return null;
-  const [open,setOpen]=useState(false);
-  const isAdjusted=phase.carbMult!==1||phase.proteinMult!==1;
-  return(
-    <div style={{background:`${phase.color}0c`,border:`1px solid ${phase.color}30`,borderRadius:14,marginBottom:16,overflow:"hidden",animation:"fi .4s ease"}}>
-      {/* Always-visible strip */}
-      <div style={{padding:"14px 20px",display:"flex",alignItems:"center",gap:14,cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
-        <div style={{fontSize:28,flexShrink:0}}>{phase.emoji}</div>
-        <div style={{flex:1}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3,flexWrap:"wrap"}}>
-            <span style={{fontFamily:bebas,fontSize:17,letterSpacing:"0.06em",color:phase.color}}>{phase.label.toUpperCase()}</span>
-            {isAdjusted&&!carbLoad&&(
-              <span style={{display:"inline-flex",alignItems:"center",gap:5,padding:"2px 8px",borderRadius:4,fontSize:9,fontWeight:700,fontFamily:mono,background:`${phase.color}18`,color:phase.color}}>
-                CARBS ×{phase.carbMult}{phase.proteinMult!==1?` · PROTEIN ×${phase.proteinMult}`:""}
-              </span>
-            )}
-          </div>
-          <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.4}}>{phase.headline}</p>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-          {macros&&!carbLoad&&isAdjusted&&(
-            <div style={{textAlign:"right"}}>
-              <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.08em"}}>ADJUSTED CARBS</div>
-              <div style={{fontFamily:bebas,fontSize:22,color:phase.color,lineHeight:1}}>{macros.carbs}g</div>
-            </div>
-          )}
-          <div style={{fontSize:16,color:phase.color,transition:"transform .2s",transform:open?"rotate(180deg)":"none"}}>▾</div>
-        </div>
-      </div>
-
-      {/* Expanded explanation */}
-      {open&&(
-        <div style={{borderTop:`1px solid ${phase.color}20`,padding:"16px 20px",background:`${phase.color}05`,animation:"fi .2s ease"}}>
-          <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.65,marginBottom:16}}>{phase.summary}</p>
-
-          {/* What changes in nutrition */}
-          {isAdjusted&&!carbLoad&&(
-            <div style={{background:"#080f1a",borderRadius:10,padding:"12px 16px",marginBottom:14,border:`1px solid ${phase.color}20`}}>
-              <div style={{fontSize:10,fontFamily:mono,color:phase.color,letterSpacing:"0.1em",marginBottom:10}}>📊 HOW THESE TARGETS ARE CALCULATED</div>
-              <p style={{fontSize:13,color:"#64748b",lineHeight:1.65}}>
-                Base macro targets are calculated from your weight and session intensity. In <strong style={{color:phase.color}}>{phase.label}</strong>, those numbers are multiplied:
-              </p>
-              <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
-                {[["Carbs",`×${phase.carbMult}`,phase.color,"Higher training load depletes more glycogen. You need to replace proportionally more."],[...phase.proteinMult!==1?[["Protein",`×${phase.proteinMult}`,"#f59e0b","Greater muscle damage from increased volume requires more protein for repair."]]:[]]].map(([label,mult,color,reason])=>(
-                  <div key={label} style={{flex:1,minWidth:160,background:"#0c1420",borderRadius:8,padding:"10px 12px",border:`1px solid ${color}25`}}>
-                    <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:4}}>
-                      <span style={{fontSize:10,fontFamily:mono,color:"#475569"}}>{label}</span>
-                      <span style={{fontFamily:bebas,fontSize:20,color,lineHeight:1}}>{mult}</span>
-                    </div>
-                    <p style={{fontSize:11,color:"#475569",lineHeight:1.5}}>{reason}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Priority checklist */}
-          <div style={{fontSize:10,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:8}}>✅ NUTRITION PRIORITIES THIS PHASE</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {phase.priorities.map((p,i)=>(
-              <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                <div style={{width:20,height:20,borderRadius:"50%",background:`${phase.color}18`,border:`1px solid ${phase.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:9,color:phase.color,flexShrink:0}}>{i+1}</div>
-                <span style={{fontSize:13,color:"#94a3b8",lineHeight:1.5,paddingTop:2}}>{p}</span>
-              </div>
-            ))}
-          </div>
-
-          {phase.warning&&(
-            <div style={{marginTop:14,background:"#1a0f00",border:"1px solid #f59e0b40",borderRadius:8,padding:"10px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
-              <span style={{fontSize:14,flexShrink:0}}>⚠️</span>
-              <span style={{fontSize:12,color:"#f59e0b",lineHeight:1.5}}>{phase.warning}</span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function App(){
   const [weight,setWeight]=useState("");
@@ -445,8 +317,10 @@ function App(){
   const sess=useMemo(()=>SESSIONS.find(s=>s.id===selected),[selected]);
   const dur=selected?(durations[selected]||DEFAULT_DUR[selected]):60;
   const weeksOut=useMemo(()=>raceDate?weeksUntil(raceDate):null,[raceDate]);
-  const phase=useMemo(()=>getPhase(weeksOut),[weeksOut]);
-  const macros=useMemo(()=>kg&&(selected||carbLoad)?calcMacros(kg,selected||"easy",dur,carbLoad,phase):null,[kg,selected,dur,carbLoad,phase]);
+  // carbLoad unlocks only when race date is set AND ≤7 days away
+  const daysOut=raceDate?daysUntil(raceDate):null;
+  const carbLoadUnlocked=raceDate!==''&&daysOut!==null&&daysOut<=7;
+  const macros=useMemo(()=>kg&&(selected||carbLoad)?calcMacros(kg,selected||"easy",dur,carbLoad):null,[kg,selected,dur,carbLoad]);
   const burned=useMemo(()=>kg&&sess&&dur?calcBurned(sess.met,kg,dur):null,[kg,sess,dur]);
   const replenish=useMemo(()=>burned&&selected?calcReplenish(burned,kg,selected):null,[burned,kg,selected]);
   const hydration=useMemo(()=>{if(!kg||!(selected||carbLoad))return null;return SWEAT[sweatKey].hydFn(kg,selected||"easy",dur);},[kg,selected,dur,sweatKey,carbLoad]);
@@ -477,11 +351,11 @@ function App(){
             <h1 style={{fontSize:"clamp(40px,8vw,68px)",fontFamily:bebas,letterSpacing:"0.04em",lineHeight:.95,color:"#f8fafc"}}>
               FUEL YOUR<br/><span style={{color:"#4ade80"}}>MARATHON</span>
             </h1>
-            {/* Race countdown chip */}
-            {raceDate&&weeksOut!==null&&phase&&(
-              <div style={{background:`${phase.color}12`,border:`1px solid ${phase.color}30`,borderRadius:12,padding:"12px 18px",textAlign:"right"}}>
-                <div style={{fontSize:9,fontFamily:mono,color:phase.color,letterSpacing:"0.1em",marginBottom:2}}>{phase.emoji} {phase.label.toUpperCase()}</div>
-                <div style={{fontFamily:bebas,fontSize:34,color:phase.color,lineHeight:1}}>{weeksOut} WEEKS OUT</div>
+            {/* Race countdown chip — simple */}
+            {raceDate&&weeksOut!==null&&(
+              <div style={{background:carbLoadUnlocked?"#0d2318":"#0c1420",border:`1px solid ${carbLoadUnlocked?"#4ade80":"#1e293b"}`,borderRadius:12,padding:"12px 18px",textAlign:"right"}}>
+                <div style={{fontSize:9,fontFamily:mono,color:carbLoadUnlocked?"#4ade80":"#475569",letterSpacing:"0.1em",marginBottom:2}}>{carbLoadUnlocked?"🏅 RACE WEEK":"📅 RACE DAY"}</div>
+                <div style={{fontFamily:bebas,fontSize:34,color:carbLoadUnlocked?"#4ade80":"#94a3b8",lineHeight:1}}>{weeksOut>0?weeksOut+" WEEKS":"RACE DAY!"}</div>
                 <div style={{fontSize:11,color:"#475569",marginTop:2}}>{daysUntil(raceDate)} days · {new Date(raceDate+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</div>
               </div>
             )}
@@ -539,62 +413,61 @@ function App(){
             </div>
           </div>
 
-          {/* Race date + duration */}
+          {/* Race date — standalone, clean */}
           <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:14,padding:20}}>
-            <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>RACE DATE <span style={{color:"#334155",fontWeight:400}}>(optional)</span></div>
+            <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:6}}>RACE DATE <span style={{color:"#334155",fontWeight:400}}>(optional)</span></div>
+            <div style={{fontSize:12,color:"#334155",marginBottom:12,lineHeight:1.5}}>Enter your race date to unlock Carb Loading Mode in the final section below.</div>
             <input type="date" value={raceDate} onChange={e=>setRaceDate(e.target.value)}
-              style={{width:"100%",background:"#080f1a",border:"1px solid #1e293b",borderRadius:8,padding:"10px 14px",color:raceDate?"#f8fafc":"#475569",fontSize:14,fontFamily:mono,outline:"none",marginBottom:10}}/>
-            {raceDate&&weeksOut!==null&&phase&&(
-              <div style={{marginBottom:10,padding:"8px 12px",background:`${phase.color}10`,border:`1px solid ${phase.color}25`,borderRadius:8}}>
-                <div style={{fontSize:11,color:phase.color,fontFamily:mono}}>{phase.emoji} {phase.label}</div>
-                <div style={{fontSize:11,color:"#475569",marginTop:2}}>Macros auto-adjusted for this phase ↓</div>
+              style={{width:"100%",background:"#080f1a",border:"1px solid #1e293b",borderRadius:8,padding:"10px 14px",color:raceDate?"#f8fafc":"#475569",fontSize:14,fontFamily:mono,outline:"none"}}/>
+            {raceDate&&weeksOut!==null&&(
+              <div style={{marginTop:10,padding:"8px 12px",background:carbLoadUnlocked?"#0d2318":"#0c1420",border:`1px solid ${carbLoadUnlocked?"#4ade80":"#1e293b"}`,borderRadius:8}}>
+                {carbLoadUnlocked
+                  ? <div style={{fontSize:12,color:"#4ade80",fontFamily:mono}}>🏅 {weeksOut===0?"Race day!":weeksOut===1?"Race next week — carb load now!":""+daysUntil(raceDate)+" days to go — Carb Load Mode unlocked ↓"}</div>
+                  : <div style={{fontSize:12,color:"#475569",fontFamily:mono}}>{daysUntil(raceDate)} days to go · {weeksOut} weeks · Carb Load unlocks at 7 days</div>
+                }
               </div>
             )}
-            <div style={{borderTop:"1px solid #0f172a",paddingTop:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <div style={{fontSize:10,fontFamily:mono,color:"#475569",letterSpacing:"0.1em"}}>SESSION DURATIONS</div>
-                <button onClick={()=>setExpandDur(x=>!x)} style={{fontSize:11,color:"#4ade80",background:"none",border:"none",cursor:"pointer",fontFamily:mono}}>{expandDur?"▲ COLLAPSE":"▼ EDIT ALL"}</button>
-              </div>
-              {SESSIONS.filter(s=>s.id!=="rest").map(s=>(
-                <div key={s.id} style={{marginBottom:expandDur?10:0,display:expandDur||selected===s.id?"block":"none"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-                    <span style={{fontSize:12,color:"#94a3b8"}}>{s.icon} {s.label}</span>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <input type="number" min="0" max="300" value={durations[s.id]||""} onChange={e=>setDur(s.id,e.target.value)}
-                        style={{width:60,background:"#080f1a",border:"1px solid",borderColor:selected===s.id?s.color:"#1e293b",borderRadius:6,padding:"4px 8px",color:"#f8fafc",fontSize:13,fontFamily:mono,outline:"none",textAlign:"center"}}/>
-                      <span style={{fontSize:11,color:"#475569"}}>min</span>
-                    </div>
+          </div>
+        </div>
+
+        {/* ── SESSION DURATIONS — own card, always visible ── */}
+        <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:14,padding:20,marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div>
+              <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:3}}>SESSION DURATIONS</div>
+              <div style={{fontSize:12,color:"#334155"}}>Adjust to match your actual training time — burn estimates and macros update automatically.</div>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14}}>
+            {SESSIONS.filter(s=>s.id!=="rest").map(s=>(
+              <div key={s.id} style={{background:"#080f1a",borderRadius:10,padding:"12px 14px",border:"1px solid",borderColor:selected===s.id?s.color:"#0f172a"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7}}>
+                    <span style={{fontSize:15}}>{s.icon}</span>
+                    <span style={{fontSize:12,color:selected===s.id?s.color:"#94a3b8",fontWeight:500}}>{s.label}</span>
                   </div>
-                  {expandDur&&<input type="range" min="10" max="300" value={durations[s.id]||DEFAULT_DUR[s.id]} onChange={e=>setDur(s.id,e.target.value)} style={{width:"100%",accentColor:s.color}}/>}
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <input type="number" min="0" max="300" value={durations[s.id]||""} onChange={e=>setDur(s.id,e.target.value)}
+                      style={{width:52,background:"#040a0f",border:"1px solid",borderColor:selected===s.id?s.color:"#1e293b",borderRadius:6,padding:"3px 6px",color:"#f8fafc",fontSize:13,fontFamily:mono,outline:"none",textAlign:"center"}}/>
+                    <span style={{fontSize:11,color:"#475569"}}>min</span>
+                  </div>
                 </div>
-              ))}
-              {!expandDur&&!selected&&<p style={{fontSize:12,color:"#334155"}}>Select a session below, or expand to edit all.</p>}
-            </div>
+                <div style={{position:"relative",paddingTop:4}}>
+                  <input type="range" min="10" max="240" value={durations[s.id]||DEFAULT_DUR[s.id]} onChange={e=>setDur(s.id,e.target.value)}
+                    style={{width:"100%",accentColor:s.color,appearance:"none",WebkitAppearance:"none",height:6,borderRadius:3,outline:"none",cursor:"pointer",
+                      background:`linear-gradient(to right, ${s.color} ${Math.round(((durations[s.id]||DEFAULT_DUR[s.id])-10)/(240-10)*100)}%, #1e293b ${Math.round(((durations[s.id]||DEFAULT_DUR[s.id])-10)/(240-10)*100)}%)`}}/>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+                  <span style={{fontSize:9,color:"#334155",fontFamily:mono}}>10 min</span>
+                  <span style={{fontSize:9,color:s.color,fontFamily:mono,fontWeight:700}}>{durations[s.id]||DEFAULT_DUR[s.id]} min</span>
+                  <span style={{fontSize:9,color:"#334155",fontFamily:mono}}>240 min</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* ── CARB LOAD TOGGLE ── */}
-        <div style={{background:"linear-gradient(135deg,#0c1a2e,#0a1520)",border:"1px solid #1e3a5f",borderRadius:14,padding:"16px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
-          <span style={{fontSize:26}}>🏅</span>
-          <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:3}}>
-              <span style={{fontFamily:bebas,fontSize:19,letterSpacing:"0.06em",color:"#f8fafc"}}>CARB LOADING MODE</span>
-              <Pill color="#60a5fa">RACE WEEK</Pill>
-            </div>
-            <p style={{fontSize:13,color:"#64748b",lineHeight:1.5}}>
-              Activate 2–3 days before race day. Targets <strong style={{color:"#93c5fd"}}>10g carbs/kg</strong> to supercharge glycogen stores.
-              {macros&&carbLoad&&kg&&<span style={{color:"#60a5fa"}}> Your target: <strong>{Math.round(10*kg)}g carbs/day</strong>.</span>}
-            </p>
-          </div>
-          <label style={{position:"relative",display:"inline-block",width:46,height:24,flexShrink:0}}>
-            <input type="checkbox" checked={carbLoad} onChange={e=>setCarbLoad(e.target.checked)} style={{opacity:0,width:0,height:0}}/>
-            <span onClick={()=>setCarbLoad(x=>!x)} style={{position:"absolute",inset:0,background:carbLoad?"#4ade80":"#1e293b",borderRadius:24,transition:".3s",cursor:"pointer"}}>
-              <span style={{position:"absolute",height:18,width:18,left:carbLoad?25:3,bottom:3,background:carbLoad?"#fff":"#475569",borderRadius:"50%",transition:".3s"}}/>
-            </span>
-          </label>
-        </div>
-
-        {/* ── SESSION PICKER ── */}
+                {/* ── SESSION PICKER ── */}
         {!carbLoad&&(
           <div style={{marginBottom:16}}>
             <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>TODAY'S SESSION</div>
@@ -616,8 +489,6 @@ function App(){
           </div>
         )}
 
-        {/* ── PHASE NUTRITION BANNER ── */}
-        {(selected||carbLoad)&&<PhaseNutritionBanner phase={phase} macros={macros} carbLoad={carbLoad}/>}
 
         {/* ── STATS ROW ── */}
         {(selected||carbLoad)&&(
@@ -627,7 +498,7 @@ function App(){
                 <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:10}}>
                   {carbLoad?"CARB LOAD TARGETS":"POST-RUN MACRO TARGETS"}
                   {kg&&<span style={{color:"#334155"}}> / {kg.toFixed(1)}kg{dur&&!carbLoad?` · ${dur}min`:""}</span>}
-                  {macros.phaseAdj&&!carbLoad&&phase&&<span style={{color:phase.color,marginLeft:6,fontSize:9}}>· {phase.label} ×{phase.carbMult}</span>}
+  
                 </div>
                 <MacroBar {...macros}/>
                 <div style={{marginTop:14,borderTop:"1px solid #0f172a",paddingTop:12,display:"flex",gap:8}}>
@@ -674,31 +545,31 @@ function App(){
         )}
 
         {/* ── REPLENISHMENT CARD ── */}
-        {burned&&replenish&&!carbLoad&&(
+        {burned&&replenish&&(
           <div style={{marginBottom:12}}>
             <ReplenishCard burned={burned} replenish={replenish} dishKcal={dishKcal} dishName={meals[activeMeal]?.name} sessionColor={sess?.color} eu={eu}/>
           </div>
         )}
 
         {/* ── MEALS PANEL ── */}
-        {(selected||carbLoad)&&meals.length>0&&(
+        {selected&&meals.length>0&&(
           <div style={{animation:"fi .4s ease"}}>
 
             {/* Panel header */}
             <div style={{background:"#0c1420",border:"1px solid #1e293b",borderRadius:"12px 12px 0 0",borderBottom:"none",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-              <span style={{fontSize:24}}>{carbLoad?"🏅":sess?.icon}</span>
+              <span style={{fontSize:24}}>{sess?.icon}</span>
               <div>
                 <div style={{fontFamily:bebas,fontSize:18,letterSpacing:"0.06em",color:"#f8fafc"}}>
-                  {carbLoad?"CARB LOADING — RACE WEEK MEALS":sess?.label.toUpperCase()+" — TODAY'S NUTRITION"}
+                  {sess?.label.toUpperCase()+" — TODAY'S NUTRITION"}
                 </div>
-                {!carbLoad&&selected&&<div style={{fontSize:11,color:sess?.color,fontFamily:mono}}>Post-run: {TIMING[selected]}</div>}
+                <div style={{fontSize:11,color:sess?.color,fontFamily:mono}}>Post-run: {TIMING[selected]}</div>
               </div>
             </div>
 
             {/* Tab bar: Pre-Run first, then Post-Run */}
             <div style={{background:"#080f1a",borderLeft:"1px solid #1e293b",borderRight:"1px solid #1e293b",padding:"8px 14px",display:"flex",gap:4,flexWrap:"wrap"}}>
               {[
-                ...(!carbLoad&&selected?[["pre-run",`⚡ Before ${sess?.label}`]]:[]),
+                ...([["pre-run",`⚡ Before ${sess?.label}`]]),
                 ["post-run","🍽️ After Run"],
                 ["hydration","💧 Hydration"],
                 ["tips","💡 Tips & Avoid"],
@@ -926,7 +797,181 @@ function App(){
           </div>
         )}
 
-        {!selected&&!carbLoad&&(
+        {/* ── CARB LOADING — BOTTOM SECTION ── */}
+        <div style={{marginTop:32,borderTop:"1px solid #0f172a",paddingTop:24}}>
+          {/* Header explaining what it is and when to use */}
+          <div style={{marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+              <span style={{fontSize:22}}>🏅</span>
+              <span style={{fontFamily:bebas,fontSize:22,letterSpacing:"0.06em",color:"#f8fafc"}}>CARB LOADING MODE</span>
+              <Pill color="#60a5fa">RACE WEEK ONLY</Pill>
+            </div>
+            <p style={{fontSize:13,color:"#64748b",lineHeight:1.6,maxWidth:640}}>
+              For the 2–3 days before your race. Targets <strong style={{color:"#93c5fd"}}>10g carbs/kg/day</strong> to fill glycogen stores to maximum. Not for everyday training — activate only in race week.
+            </p>
+          </div>
+
+          {/* Locked state — no race date set */}
+          {!raceDate&&(
+            <div style={{background:"#0c1420",border:"1px dashed #1e293b",borderRadius:14,padding:"20px 24px",display:"flex",alignItems:"center",gap:16}}>
+              <span style={{fontSize:28}}>🔒</span>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:"#475569",marginBottom:4}}>Enter your race date to unlock Carb Loading</div>
+                <div style={{fontSize:13,color:"#334155",lineHeight:1.5}}>Add your race date in the setup section above. Carb Loading Mode unlocks automatically in the 2 weeks before your race.</div>
+              </div>
+            </div>
+          )}
+
+          {/* Locked state — race date set but too far away */}
+          {raceDate&&!carbLoadUnlocked&&(
+            <div style={{background:"#0c1420",border:"1px dashed #1e293b",borderRadius:14,padding:"20px 24px",display:"flex",alignItems:"center",gap:16}}>
+              <span style={{fontSize:28}}>⏳</span>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:"#475569",marginBottom:4}}>Carb Loading unlocks in {daysOut-7} days</div>
+                <div style={{fontSize:13,color:"#334155",lineHeight:1.5}}>{daysOut} days until your race. Carb Loading Mode activates when you're 7 days out. Come back then.</div>
+              </div>
+            </div>
+          )}
+
+          {/* Unlocked — toggle + full inline meal panel */}
+          {carbLoadUnlocked&&(
+            <div style={{animation:"fi .4s ease"}}>
+              {/* Toggle row */}
+              <div style={{background:"linear-gradient(135deg,#0c1a2e,#0a1520)",border:"1px solid #1e3a5f",borderRadius:14,padding:"16px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,color:"#64748b",lineHeight:1.5}}>
+                    <span style={{color:"#4ade80"}}>✓ {daysOut} days to go — you're in the window. </span>
+                    {carbLoad&&kg&&<span style={{color:"#60a5fa"}}>Daily carb target: <strong>{Math.round(10*kg)}g carbs</strong>.</span>}
+                    {!carbLoad&&<span>Switch on to see race week meal targets and food plan.</span>}
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+                  <span style={{fontSize:12,fontFamily:mono,color:carbLoad?"#4ade80":"#475569"}}>{carbLoad?"ACTIVE":"OFF"}</span>
+                  <label style={{position:"relative",display:"inline-block",width:46,height:24,cursor:"pointer"}} onClick={()=>setCarbLoad(x=>!x)}>
+                    <span style={{display:"block",position:"absolute",inset:0,background:carbLoad?"#4ade80":"#1e293b",borderRadius:24,transition:".3s"}}>
+                      <span style={{position:"absolute",height:18,width:18,left:carbLoad?25:3,bottom:3,background:carbLoad?"#040a0f":"#475569",borderRadius:"50%",transition:".3s"}}/>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Inline carb load content — only when active */}
+              {carbLoad&&(
+                <div style={{animation:"fi .3s ease"}}>
+                  {/* Macro targets */}
+                  {macros&&(
+                    <div style={{background:"#0c1420",border:"1px solid #1e3a5f",borderRadius:12,padding:"16px 20px",marginBottom:12}}>
+                      <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:10}}>
+                        CARB LOAD TARGETS{kg&&<span style={{color:"#334155"}}> / {kg.toFixed(1)}kg</span>}
+                      </div>
+                      <MacroBar carbs={macros.carbs} protein={macros.protein} fat={macros.fat}/>
+                      <div style={{marginTop:14,borderTop:"1px solid #0f172a",paddingTop:12,display:"flex",gap:8,flexWrap:"wrap"}}>
+                        {showKcal&&<div style={{background:"#080f1a",borderRadius:8,padding:"8px 12px",minWidth:80}}>
+                          <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kcal/day</div>
+                          <div style={{fontSize:20,fontWeight:700,color:"#60a5fa",fontFamily:mono}}>{macros.kcal.toLocaleString()}</div>
+                        </div>}
+                        {showKj&&<div style={{background:"#080f1a",borderRadius:8,padding:"8px 12px",minWidth:80}}>
+                          <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>kJ/day</div>
+                          <div style={{fontSize:20,fontWeight:700,color:"#a78bfa",fontFamily:mono}}>{macros.kj.toLocaleString()}</div>
+                        </div>}
+                        <div style={{background:"#080f1a",borderRadius:8,padding:"8px 12px",minWidth:80}}>
+                          <div style={{fontSize:9,fontFamily:mono,color:"#475569",marginBottom:2}}>carbs/day</div>
+                          <div style={{fontSize:20,fontWeight:700,color:"#60a5fa",fontFamily:mono}}>{macros.carbs}g</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Meal tabs */}
+                  <div style={{background:"#0c1420",border:"1px solid #1e3a5f",borderRadius:"12px 12px 0 0",borderBottom:"none",padding:"14px 18px",display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:22}}>🏅</span>
+                    <div style={{fontFamily:bebas,fontSize:18,letterSpacing:"0.06em",color:"#f8fafc"}}>RACE WEEK MEALS</div>
+                  </div>
+                  <div style={{background:"#080f1a",borderLeft:"1px solid #1e3a5f",borderRight:"1px solid #1e3a5f",padding:"10px 14px",overflowX:"auto"}}>
+                    <div style={{display:"flex",gap:6,minWidth:"max-content"}}>
+                      {CL_MEALS.map((m,i)=>(
+                        <button key={i} onClick={()=>setActiveMeal(i)} style={{padding:"6px 12px",borderRadius:6,fontSize:12,fontWeight:500,border:"1px solid",borderColor:activeMeal===i?"#334155":"#1e293b",background:activeMeal===i?"#1e293b":"transparent",color:activeMeal===i?"#e2e8f0":"#64748b",cursor:"pointer",whiteSpace:"nowrap",transition:"all .18s"}}>{m.emoji} {m.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{background:"#0c1420",border:"1px solid #1e3a5f",borderTop:"2px solid #60a5fa",padding:"20px",animation:"fi .3s ease"}}>
+                    {CL_MEALS[activeMeal]&&(()=>{
+                      const m=CL_MEALS[activeMeal];
+                      const ings=scaleIngredients(m.ingredients,kg);
+                      const total=kg?ings.reduce((s,i)=>s+i.kcal,0):m.baseKcal;
+                      return(
+                        <div>
+                          <div style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:18}}>
+                            <span style={{fontSize:36}}>{m.emoji}</span>
+                            <div style={{flex:1}}>
+                              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:6}}>
+                                <h3 style={{fontSize:18,fontWeight:700,color:"#f8fafc"}}>{m.name}</h3>
+                                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                                  {showKcal&&<div style={{background:"#080f1a",border:"1px solid #1e293b",borderRadius:7,padding:"4px 10px",textAlign:"center"}}>
+                                    <div style={{fontSize:9,fontFamily:mono,color:"#475569"}}>kcal</div>
+                                    <div style={{fontSize:16,fontWeight:700,color:"#60a5fa",fontFamily:mono}}>{total.toLocaleString()}</div>
+                                  </div>}
+                                  {showKj&&<div style={{background:"#080f1a",border:"1px solid #1e293b",borderRadius:7,padding:"4px 10px",textAlign:"center"}}>
+                                    <div style={{fontSize:9,fontFamily:mono,color:"#475569"}}>kJ</div>
+                                    <div style={{fontSize:16,fontWeight:700,color:"#a78bfa",fontFamily:mono}}>{Math.round(total*4.184).toLocaleString()}</div>
+                                  </div>}
+                                </div>
+                              </div>
+                              <p style={{fontSize:13,color:"#64748b",lineHeight:1.65,marginBottom:10}}>{m.why}</p>
+                              <a href={m.recipe} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,color:"#60a5fa",textDecoration:"none",fontFamily:mono,border:"1px solid #1e3a5f",padding:"5px 12px",borderRadius:6,background:"#0a1929"}}>📖 View Full Recipe ↗</a>
+                            </div>
+                          </div>
+                          <div style={{borderTop:"1px solid #0f172a",paddingTop:14}}>
+                            <div style={{fontSize:10,fontFamily:mono,color:"#334155",letterSpacing:"0.1em",marginBottom:10}}>
+                              INGREDIENTS {kg?`— SCALED TO ${kg.toFixed(0)}KG`:"— ENTER WEIGHT TO PERSONALISE"}
+                            </div>
+                            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                              {ings.map((ing,i)=>(
+                                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",background:"#080f1a",borderRadius:8,border:"1px solid #0f172a"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                    <span style={{color:"#60a5fa",fontSize:10}}>◆</span>
+                                    <span style={{fontSize:13,color:"#cbd5e1"}}>{ing.displayLabel}</span>
+                                  </div>
+                                  {ing.kcal>0&&(
+                                    <div style={{display:"flex",gap:8,flexShrink:0}}>
+                                      {showKcal&&<span style={{fontSize:11,fontFamily:mono,color:"#475569"}}>{ing.kcal} kcal</span>}
+                                      {showKj&&<span style={{fontSize:11,fontFamily:mono,color:"#334155"}}>{Math.round(ing.kcal*4.184)} kJ</span>}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                            {total>0&&(
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",background:"#0a1929",borderRadius:8,marginTop:6,border:"1px solid #1e3a5f"}}>
+                                <span style={{fontSize:12,fontWeight:700,color:"#e2e8f0"}}>Total</span>
+                                <div style={{display:"flex",gap:12}}>
+                                  {showKcal&&<span style={{fontSize:13,fontWeight:700,fontFamily:mono,color:"#60a5fa"}}>{total.toLocaleString()} kcal</span>}
+                                  {showKj&&<span style={{fontSize:13,fontWeight:700,fontFamily:mono,color:"#a78bfa"}}>{Math.round(total*4.184).toLocaleString()} kJ</span>}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          {/* Protocol tips */}
+                          <div style={{marginTop:16,background:"#0a1929",border:"1px solid #1e3a5f",borderRadius:12,padding:18}}>
+                            <div style={{fontSize:11,fontFamily:mono,color:"#60a5fa",letterSpacing:"0.1em",marginBottom:12}}>📋 CARB LOADING PROTOCOL</div>
+                            {["Start 2–3 days before race day — not just the night before.","Eat every 2–3 hours. Spread carbs across 5–6 meals, don't binge in one sitting.","Choose low-fibre carbs: white rice, white bread, pasta, bagels, bananas.","Cut back on fat and protein temporarily to make calorie room for carbs.","Avoid new foods or restaurants — race week is not the time to experiment.","You may feel heavier — each gram of glycogen holds ~3g of water. This is completely normal.","Taper your training alongside the carb load — you are storing energy, not burning it."].map((tip,i)=>(
+                              <div key={i} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
+                                <div style={{width:20,height:20,borderRadius:"50%",background:"#1e3a5f",border:"1px solid #60a5fa55",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:9,color:"#60a5fa",flexShrink:0}}>{i+1}</div>
+                                <span style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>{tip}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+                {!selected&&!carbLoad&&(
           <div style={{textAlign:"center",padding:"50px 20px",color:"#1e293b",fontFamily:mono,fontSize:13,letterSpacing:"0.08em"}}>
             ↑ SELECT A SESSION OR ENABLE CARB LOADING TO BEGIN
           </div>
