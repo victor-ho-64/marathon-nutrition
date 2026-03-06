@@ -9,6 +9,7 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
@@ -342,6 +343,20 @@ function App(){
   const [eu,setEu]=useState("both");
   const [showEvidence,setShowEvidence]=useState(false);
   const [copied,setCopied]=useState(false);
+  const [rdTab,setRdTab]=useState("timeline");          // timeline | gels | morning | recovery
+  const [targetTime,setTargetTime]=useState(()=>ls("mf_rdtime","3:30")); // hh:mm finish target
+  const [rdOpen,setRdOpen]=useState(false);
+  // Bonk Risk Calculator state
+  const [bonkWeight,setBonkWeight]=useState(()=>ls("mf_bwt","70"));
+  const [bonkTime,setBonkTime]=useState(()=>ls("mf_btime","3:30"));
+  const [bonkCarbs,setBonkCarbs]=useState(()=>ls("mf_bcarbs","60"));
+  const [bonkGlycogen,setBonkGlycogen]=useState(()=>ls("mf_bglyc","450"));
+  const [bonkAdvanced,setBonkAdvanced]=useState(false);
+  const [bonkExp,setBonkExp]=useState(()=>ls("mf_bexp","first"));
+  const [bonkShareCopied,setBonkShareCopied]=useState(false);
+  const [pngLoading,setPngLoading]=useState(false);
+  const [onboardingDone,setOnboardingDone]=useState(()=>{try{return localStorage.getItem("mf_onb")==="1";}catch{return false;}});
+  const dismissOnboarding=()=>{setOnboardingDone(true);try{localStorage.setItem("mf_onb","1");}catch{}};
   const [diet,setDiet]=useState(()=>ls("mf_diet","omni")); // omni | veggie | vegan
   const [gender,setGender]=useState(()=>ls("mf_gender","unset")); // unset | male | female
   // Persist user prefs
@@ -350,6 +365,12 @@ function App(){
   useEffect(()=>{try{localStorage.setItem("mf_sweat",sweatKey);}catch{}}, [sweatKey]);
   useEffect(()=>{try{localStorage.setItem("mf_diet",diet);}catch{}}, [diet]);
   useEffect(()=>{try{localStorage.setItem("mf_gender",gender);}catch{}}, [gender]);
+  useEffect(()=>{try{localStorage.setItem("mf_rdtime",targetTime);}catch{}}, [targetTime]);
+  useEffect(()=>{try{localStorage.setItem("mf_bwt",bonkWeight);}catch{}}, [bonkWeight]);
+  useEffect(()=>{try{localStorage.setItem("mf_btime",bonkTime);}catch{}}, [bonkTime]);
+  useEffect(()=>{try{localStorage.setItem("mf_bcarbs",bonkCarbs);}catch{}}, [bonkCarbs]);
+  useEffect(()=>{try{localStorage.setItem("mf_bglyc",bonkGlycogen);}catch{}}, [bonkGlycogen]);
+  useEffect(()=>{try{localStorage.setItem("mf_bexp",bonkExp);}catch{}}, [bonkExp]);
 
   // Diet filter helper
   const filterMeals=(arr)=>{
@@ -390,6 +411,16 @@ function App(){
   const [preMeal,setPreMeal]=useState(0);
 
   useEffect(()=>{setActiveMeal(0);setPreMeal(0);},[selected,carbLoad,diet]);
+  // Pre-fill bonk calculator from setup weight + race day target time
+  useEffect(()=>{
+    if(weight&&weight!==""){
+      const kgVal=unit==="kg"?weight:String(Math.round(parseFloat(weight)*0.453592));
+      setBonkWeight(kgVal);
+    }
+  },[weight,unit]);
+  useEffect(()=>{
+    if(targetTime&&targetTime!=="")setBonkTime(targetTime);
+  },[targetTime]);
   const setDur=(id,val)=>setDurations(d=>({...d,[id]:Math.max(0,Math.min(300,parseInt(val)||0))}));
   const showKcal=eu==="kcal"||eu==="both";
   const showKj=eu==="kj"||eu==="both";
@@ -424,6 +455,23 @@ function App(){
       </div>
 
       <div style={{maxWidth:980,margin:"0 auto",padding:"0 24px"}}>
+
+        {/* ── First-time onboarding banner ── */}
+        {!onboardingDone&&(
+          <div style={{animation:"fi .4s ease",marginTop:20,marginBottom:4,background:"linear-gradient(135deg,#0d2318,#091a10)",border:"1px solid #4ade8035",borderRadius:14,padding:"16px 20px",display:"flex",alignItems:"flex-start",gap:14,position:"relative"}}>
+            <span style={{fontSize:22,flexShrink:0}}>👋</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:14,fontWeight:700,color:"#f8fafc",marginBottom:5}}>Welcome — here's how to get started</div>
+              <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.7}}>
+                <strong style={{color:"#4ade80"}}>1. Enter your weight</strong> in the setup cards below.{" "}
+                <strong style={{color:"#4ade80"}}>2. Pick today's session</strong> — Easy Run, Tempo, Long Run — to unlock your personalised meal plan.{" "}
+                <strong style={{color:"#4ade80"}}>3. Scroll down</strong> for hydration, carb loading, race day, and bonk risk tools.
+              </div>
+            </div>
+            <button onClick={dismissOnboarding}
+              style={{position:"absolute",top:12,right:14,background:"none",border:"none",color:"#475569",fontSize:18,cursor:"pointer",lineHeight:1,padding:4}}>✕</button>
+          </div>
+        )}
 
         {/* ── SETUP ROW ── */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginTop:24,marginBottom:16}}>
@@ -529,9 +577,10 @@ function App(){
         {/* ── SESSION PICKER ── */}
         {!carbLoad&&(
           <div style={{marginBottom:16}}>
-            <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:12}}>TODAY'S SESSION</div>
-            {/* Button strip */}
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+            <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.12em",marginBottom:10}}>TODAY'S SESSION</div>
+            {/* Button strip — sticky on scroll */}
+            <div style={{position:"sticky",top:0,zIndex:20,background:"#040a0f",marginLeft:-24,marginRight:-24,paddingLeft:24,paddingRight:24,paddingTop:8,paddingBottom:8,borderBottom:"1px solid #0f172a",marginBottom:12}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               {SESSIONS.map(s=>(
                 <button key={s.id} onClick={()=>setSelected(s.id===selected?null:s.id)}
                   style={{cursor:"pointer",display:"flex",alignItems:"center",gap:7,padding:"9px 14px",borderRadius:10,border:"1px solid",borderColor:selected===s.id?s.color:"#1e293b",background:selected===s.id?`${s.color}14`:"#0c1420",color:selected===s.id?s.color:"#64748b",fontSize:13,fontWeight:selected===s.id?700:400,transition:"all .18s",flexShrink:0}}>
@@ -540,6 +589,7 @@ function App(){
                   {selected===s.id&&<span style={{fontSize:9,background:s.color,color:"#040a0f",borderRadius:4,padding:"1px 5px",fontFamily:mono,fontWeight:700,marginLeft:2}}>✓</span>}
                 </button>
               ))}
+              </div>
             </div>
             {/* Expanded detail card for selected session — includes duration slider */}
             {selected&&sess&&(
@@ -1256,12 +1306,722 @@ function App(){
           )}
         </div>
 
-                {!selected&&!carbLoad&&(
-          <div style={{textAlign:"center",padding:"50px 20px",color:"#1e293b",fontFamily:mono,fontSize:13,letterSpacing:"0.08em"}}>
-            ↑ SELECT A SESSION OR ENABLE CARB LOADING TO BEGIN
+        
+        {/* ═══════════════════════════════════════════════════════════════
+            RACE DAY MODE
+        ═══════════════════════════════════════════════════════════════ */}
+        <div style={{marginTop:32,borderTop:"1px solid #0f172a",paddingTop:24}}>
+
+          {/* ── Section header ── */}
+          <div style={{marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,flexWrap:"wrap"}}>
+              <span style={{fontSize:22}}>🏁</span>
+              <span style={{fontFamily:bebas,fontSize:22,letterSpacing:"0.06em",color:"#f8fafc"}}>RACE DAY MODE</span>
+              <Pill color="#f59e0b">MARATHON DAY</Pill>
+            </div>
+            <p style={{fontSize:13,color:"#64748b",lineHeight:1.6,maxWidth:640}}>
+              A complete race day fuelling plan — from your wake-up alarm to your finish line recovery. Personalised to your target finish time and body weight.
+            </p>
           </div>
+
+          {/* ── Locked: no race date ── */}
+          {!raceDate&&(
+            <div style={{background:"#0c1420",border:"1px dashed #1e293b",borderRadius:14,padding:"20px 24px",display:"flex",alignItems:"center",gap:16}}>
+              <span style={{fontSize:28}}>🔒</span>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:"#475569",marginBottom:4}}>Enter your race date to unlock Race Day Mode</div>
+                <div style={{fontSize:13,color:"#334155",lineHeight:1.5}}>Add your race date in the setup section above. Race Day Mode activates on the day of your race.</div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Has race date: show always ── */}
+          {raceDate&&(()=>{
+            // ── Computed race day values ──────────────────────────────────
+            const isRaceDay = daysOut===0;
+            const daysToRace = daysOut;
+
+            // Parse target time → total minutes
+            const parseTime=(s)=>{
+              const p=s.split(":").map(Number);
+              return p.length===2?p[0]*60+p[1]:p[0]*60;
+            };
+            const totalRaceMinutes=parseTime(targetTime)||210;
+            const hrs=totalRaceMinutes/60;
+
+            // In-run fuelling — evidence-based targets (Jeukendrup 2014; Burke et al. 2011)
+            // Single-source glucose gels (SiS isotonic): SGLT1 saturates at ~60g/hr max
+            // Multiple-transporter gels (glucose+fructose — Maurten, Precision, Beta Fuel):
+            //   up to 90g/hr for events >2.5hr; up to 120g/hr with gut training (elite)
+            // For a marathon (2.5–5hr): target 60–90g/hr using multi-transporter gels
+            // Conservative default = 60g/hr (accessible to gut-trained recreational runners)
+            const carbsPerHrLow  = 60;  // g/hr — minimum evidence-based target (Jeukendrup 2014)
+            const carbsPerHrHigh = 90;  // g/hr — upper target using multi-transporter gels
+            const carbsPerHr = carbsPerHrLow; // used for gel schedule (conservative default)
+            const gelCarbsG  = 25; // verified: Maurten Gel 100 = 25g, Clif Shot = 25g, PF30 = 30g
+            const gelIntervalMins = Math.round(gelCarbsG / (carbsPerHr/60));
+            // First gel at 45 min, then every gelIntervalMins
+            const gelTimes=[];
+            let t=45;
+            while(t < totalRaceMinutes-15){gelTimes.push(t);t+=gelIntervalMins;}
+            const totalGels=gelTimes.length;
+            const totalInRunCarbs=Math.round(totalGels*gelCarbsG);
+
+            // Wake-up and start time (assume 9:00 race start for display)
+            const RACE_START_MINS = 9*60; // 9:00 AM
+            const fmtMins=(m)=>{const hh=Math.floor(m/60)%24,mm=m%60;return`${hh}:${String(mm).padStart(2,"0")}`;}
+
+            // Pre-race breakfast: 2.5–3hr before start
+            const breakfastTime = fmtMins(RACE_START_MINS - 165); // 2hr45 before
+            const preRaceSnackTime = fmtMins(RACE_START_MINS - 45);
+            const finishTime = fmtMins(RACE_START_MINS + totalRaceMinutes);
+
+            // Pre-race meal carbs: 2–4g/kg (Burke 2011) — use 3g/kg
+            const preRaceCarbs = kg ? Math.round(3*kg) : "—";
+            const preRaceKcal  = kg ? Math.round(preRaceCarbs*4 + 0.25*kg*4 + 0.2*kg*9) : "—";
+
+            // Immediate recovery (30min post): 1.2g/kg carbs + 0.4g/kg protein
+            const immCarbs   = kg ? Math.round(1.2*kg) : "—";
+            const immProtein = kg ? Math.round(0.4*kg) : "—";
+            const immKcal    = kg ? Math.round(immCarbs*4+immProtein*4) : "—";
+
+            // Hydration: 500–600ml/hr during, 150% sweat loss after
+            const duringFluid = Math.round(hrs * 550);
+            const postFluid   = kg ? Math.round(SWEAT[sweatKey].hydFn(kg,"long",totalRaceMinutes)*1.5) : "—";
+
+            const ACCENT="#f59e0b";
+            const ACCENT_DIM="#78350f";
+            const CARD="#0c1420";
+            const INNER="#080f1a";
+            const BORDER="#1e293b";
+
+            // Timeline steps
+            const timeline=[
+              {time:fmtMins(RACE_START_MINS-480), emoji:"⏰", label:"Wake up",
+               detail:"Aim for 3 hours before your wave start. Eat within 30 minutes of waking.",
+               color:"#94a3b8"},
+              {time:breakfastTime, emoji:"🌾", label:"Pre-race breakfast",
+               detail:`${kg?preRaceCarbs+"g carbs, "+Math.round(0.25*kg)+"g protein — ":""}porridge, bagels, or rice. Low fibre, no new foods. Your most important meal of the day.`,
+               color:ACCENT,
+               note:`~${preRaceKcal} kcal` + (kg?` / ${Math.round(preRaceKcal*4.184).toLocaleString()} kJ`:"")},
+              {time:fmtMins(RACE_START_MINS-90), emoji:"💧", label:"Begin pre-loading",
+               detail:"Sip 500–600ml of water or electrolyte drink over the next 90 min. Don't gulp — steady intake.",
+               color:"#60a5fa"},
+              {time:preRaceSnackTime, emoji:"🍌", label:"Pre-race snack",
+               detail:"Banana + energy gel. Tops up blood glucose right before the gun. Easy to eat at bag drop.",
+               color:ACCENT,
+               note:"~200 kcal"},
+              {time:fmtMins(RACE_START_MINS-15), emoji:"💊", label:"Final electrolyte dose",
+               detail:"Take an electrolyte tablet with 200ml water. Last chance before the start corral.",
+               color:"#60a5fa"},
+              {time:fmtMins(RACE_START_MINS), emoji:"🏁", label:"Race start — 9:00 AM",
+               detail:"Your glycogen stores are full. Stick to the plan — don't go out too hard.",
+               color:"#4ade80",
+               highlight:true},
+              {time:fmtMins(RACE_START_MINS+45), emoji:"🟡", label:"First gel",
+               detail:"Take your first gel at 45 min — before you feel you need it. With 150–200ml water, not sports drink. Only use a gel brand and timing you have practiced on long runs.",
+               color:ACCENT},
+              ...gelTimes.slice(1).map((t,i)=>({
+                time:fmtMins(RACE_START_MINS+t), emoji:"🟡",
+                label:`Gel ${i+2} · km ${Math.round(t/totalRaceMinutes*42.2)}`,
+                detail:`Every ~${gelIntervalMins} min. ${carbsPerHr}g carbs/hr target. Wash down with water, not sports drink.`,
+                color:ACCENT,
+              })),
+              {time:fmtMins(RACE_START_MINS+totalRaceMinutes-20), emoji:"⚡", label:"Final push",
+               detail:"Last 20 min: no more gels needed. Focus on pace and form. Draw on your training.",
+               color:"#f87171"},
+              {time:finishTime, emoji:"🎉", label:`Finish line — ${targetTime}`,
+               detail:"Stop your watch. Collect your medal. Start recovering immediately.",
+               color:"#4ade80",
+               highlight:true},
+              {time:fmtMins(RACE_START_MINS+totalRaceMinutes+20), emoji:"🔋", label:"Immediate recovery (within 20 min)",
+               detail:`${kg?immCarbs+"g carbs + "+immProtein+"g protein — ":""}chocolate milk, recovery shake, or banana + yogurt. This window is critical for glycogen resynthesis.`,
+               color:"#4ade80",
+               note:`~${immKcal} kcal`},
+              {time:fmtMins(RACE_START_MINS+totalRaceMinutes+120), emoji:"🍽️", label:"Full recovery meal (2 hrs post)",
+               detail:`${kg?Math.round(1.2*kg)+"g carbs + "+Math.round(0.4*kg)+"g protein. ":""}Pasta, rice, chicken, salmon. Prioritise anti-inflammatory foods: berries, leafy greens, omega-3s.`,
+               color:"#a78bfa"},
+            ];
+
+            return(
+              <div style={{animation:"fi .4s ease"}}>
+
+                {/* ── Target time + open/close toggle ── */}
+                <div style={{background:`linear-gradient(135deg,#1a0f00,#0c0a00)`,border:`1px solid ${ACCENT}40`,borderRadius:14,padding:"16px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                  <div style={{fontSize:28}}>🏁</div>
+                  <div style={{flex:1,minWidth:200}}>
+                    {isRaceDay
+                      ? <div style={{fontFamily:bebas,fontSize:20,color:ACCENT,letterSpacing:"0.06em"}}>TODAY IS RACE DAY — GOOD LUCK! 🎉</div>
+                      : <div style={{fontFamily:bebas,fontSize:18,color:"#f8fafc",letterSpacing:"0.04em"}}>{daysToRace} DAYS TO RACE</div>
+                    }
+                    <div style={{fontSize:12,color:"#64748b",marginTop:2}}>Set your target finish time to personalise gel timing and fuelling windows</div>
+                  </div>
+                  {/* Target time input */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    <span style={{fontSize:11,fontFamily:mono,color:"#475569"}}>TARGET</span>
+                    <input type="text" value={targetTime} onChange={e=>setTargetTime(e.target.value)}
+                      placeholder="3:30"
+                      style={{width:68,background:INNER,border:`1px solid ${ACCENT}60`,borderRadius:8,padding:"8px 10px",color:"#f8fafc",fontSize:16,fontFamily:mono,outline:"none",textAlign:"center"}}/>
+                    <span style={{fontSize:11,fontFamily:mono,color:"#475569"}}>h:mm</span>
+                  </div>
+                  <button onClick={()=>setRdOpen(x=>!x)}
+                    style={{padding:"9px 18px",borderRadius:8,border:`1px solid ${ACCENT}50`,background:rdOpen?`${ACCENT}18`:INNER,color:rdOpen?ACCENT:"#64748b",fontSize:12,fontFamily:mono,fontWeight:700,cursor:"pointer",transition:"all .2s",flexShrink:0,letterSpacing:"0.06em"}}>
+                    {rdOpen?"▲ CLOSE":"▼ OPEN PLAN"}
+                  </button>
+                </div>
+
+                {rdOpen&&(
+                <div style={{animation:"fi .3s ease"}}>
+
+                  {/* ── Key numbers strip ── */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:16}}>
+                    {[
+                      {label:"TARGET TIME",  value:targetTime,     unit:"",       color:ACCENT},
+                      {label:"TOTAL GELS",   value:totalGels,      unit:"gels",   color:"#f97316"},
+                      {label:"IN-RUN CARBS", value:totalInRunCarbs,unit:"g",      color:"#fbbf24"},
+                      {label:"GEL INTERVAL", value:`${gelIntervalMins}`,unit:"min", color:"#fb923c"},
+                      {label:"DURING FLUIDS",value:`${duringFluid}`, unit:"ml",   color:"#60a5fa"},
+                      {label:"POST FLUIDS",  value:typeof postFluid==="number"?postFluid:"—",unit:"ml",color:"#38bdf8"},
+                    ].map(({label,value,unit,color})=>(
+                      <div key={label} style={{background:INNER,borderRadius:10,padding:"10px 12px",border:`1px solid ${color}20`}}>
+                        <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:4}}>{label}</div>
+                        <div style={{display:"flex",alignItems:"baseline",gap:4}}>
+                          <span style={{fontSize:20,fontWeight:700,fontFamily:mono,color,lineHeight:1}}>{value}</span>
+                          {unit&&<span style={{fontSize:10,color:"#475569",fontFamily:mono}}>{unit}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Tab bar ── */}
+                  <div style={{background:INNER,border:`1px solid ${BORDER}`,borderRadius:"10px 10px 0 0",padding:"8px 12px",display:"flex",gap:4,overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:0}}>
+                    {[["timeline","⏱ Timeline"],["gels","🟡 Gel Plan"],["morning","🌅 Race Morning"],["recovery","💪 Recovery"],["bonk","🧮 Bonk Check"]].map(([id,label])=>(
+                      <button key={id} onClick={()=>setRdTab(id)}
+                        style={{padding:"7px 14px",borderRadius:7,border:"none",background:rdTab===id?"#1e293b":"transparent",color:rdTab===id?"#f8fafc":"#475569",fontSize:12,fontWeight:rdTab===id?600:400,cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap",flexShrink:0}}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* ══ TIMELINE TAB ══════════════════════════════════════════ */}
+                  {rdTab==="timeline"&&(
+                    <div style={{background:CARD,border:`1px solid ${BORDER}`,borderTop:`2px solid ${ACCENT}`,padding:"20px",animation:"fi .3s ease"}}>
+                      <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:16}}>
+                        RACE DAY TIMELINE · TARGET {targetTime} · ESTIMATED FINISH {finishTime}
+                      </div>
+                      <div style={{position:"relative"}}>
+                        {/* Vertical line */}
+                        <div style={{position:"absolute",left:20,top:0,bottom:0,width:2,background:"#0f172a",borderRadius:1}}/>
+                        <div style={{display:"flex",flexDirection:"column",gap:0}}>
+                          {timeline.map((step,i)=>(
+                            <div key={i} style={{display:"flex",gap:12,paddingBottom:step.highlight?20:14,position:"relative"}}>
+                              {/* Dot on timeline */}
+                              <div style={{width:42,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",paddingTop:2}}>
+                                <div style={{width:12,height:12,borderRadius:"50%",background:step.highlight?"#f8fafc":step.color,border:`2px solid ${step.color}`,flexShrink:0,zIndex:1,marginBottom:2,boxShadow:step.highlight?`0 0 0 3px ${step.color}30`:"none"}}/>
+                                <span style={{fontSize:9,fontFamily:mono,color:"#334155",textAlign:"center",lineHeight:1.2}}>{step.time}</span>
+                              </div>
+                              {/* Content */}
+                              <div style={{flex:1,background:step.highlight?`${step.color}10`:INNER,border:`1px solid ${step.highlight?step.color+"40":BORDER}`,borderRadius:10,padding:"10px 14px",marginBottom:2}}>
+                                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                                  <span style={{fontSize:16}}>{step.emoji}</span>
+                                  <span style={{fontSize:13,fontWeight:700,color:step.highlight?"#f8fafc":step.color}}>{step.label}</span>
+                                  {step.note&&<span style={{fontSize:10,fontFamily:mono,color:"#475569",marginLeft:"auto"}}>{step.note}</span>}
+                                </div>
+                                <p style={{fontSize:12,color:"#64748b",lineHeight:1.6,margin:0}}>{step.detail}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ══ GEL PLAN TAB ══════════════════════════════════════════ */}
+                  {rdTab==="gels"&&(
+                    <div style={{background:CARD,border:`1px solid ${BORDER}`,borderTop:`2px solid ${ACCENT}`,padding:"20px",animation:"fi .3s ease"}}>
+                      <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:16}}>IN-RUN FUELLING PLAN · {carbsPerHrLow}–{carbsPerHrHigh}G CARBS/HR · SCHEDULE AT {carbsPerHr}G/HR BASE</div>
+
+                      {/* Science note */}
+                      <div style={{background:INNER,borderRadius:10,padding:"12px 16px",marginBottom:16,border:`1px solid ${ACCENT}20`}}>
+                        <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.8}}>
+                          <p style={{marginBottom:10}}>
+                            <strong style={{color:ACCENT}}>Why 60g/hr is the floor, not the ceiling. </strong>
+                            The 60g/hr limit applies only to single-source glucose gels. Your gut uses the SGLT1 transporter to absorb glucose — and it saturates at around 60g/hr no matter how many gels you take. But fructose uses an entirely different transporter, GLUT5. Combining glucose and fructose in the same gel opens both "lanes" simultaneously, raising absorption to 90g/hr — with up to 75% higher oxidation rates than glucose alone (Jeukendrup, 2008; Jeukendrup, 2014).
+                          </p>
+                          <p style={{marginBottom:10}}>
+                            <strong style={{color:"#fbbf24"}}>For a marathon specifically: </strong>
+                            {totalRaceMinutes>=150
+                              ? "Your race is over 2.5 hours — the evidence supports targeting 60–90g/hr using multi-transporter gels (glucose+fructose). At 90g/hr vs 60g/hr over a 3.5hr marathon, that's an extra ~105g of usable carbohydrate — roughly 4 additional gels worth of fuel reaching your muscles."
+                              : "Your target is under 2.5 hours. At this duration, 60g/hr with either single or multi-transporter gels is evidence-based and appropriate (Jeukendrup 2014)."}
+                          </p>
+                          <p style={{margin:0}}>
+                            <strong style={{color:"#f87171"}}>Important: </strong>
+                            Start fuelling at 45 min — well before you feel you need it. Glycogen stores last ~90 min at marathon pace. Once you're behind on fuel, you cannot catch up.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Gel schedule */}
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontSize:10,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:10}}>GEL SCHEDULE</div>
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {gelTimes.map((t,i)=>(
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:INNER,borderRadius:8,border:`1px solid ${i===0?"#f97316":"#1e293b"}40`}}>
+                              <div style={{width:28,height:28,borderRadius:"50%",background:i===0?"#f97316":"#374151",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,color:"#f8fafc",fontWeight:700,flexShrink:0}}>{i+1}</div>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:13,fontWeight:600,color:"#e2e8f0"}}>{fmtMins(RACE_START_MINS+t)} — km {Math.round(t/totalRaceMinutes*42.2)}</div>
+                                <div style={{fontSize:11,color:"#475569"}}>{gelCarbsG}g carbs · take with 150–200ml water</div>
+                              </div>
+                              <div style={{fontFamily:mono,fontSize:11,color:ACCENT,flexShrink:0}}>{gelCarbsG}g</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Total summary */}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:16}}>
+                        {[
+                          {label:"TOTAL GELS",value:totalGels,unit:"gels",color:"#f97316"},
+                          {label:"TOTAL IN-RUN CARBS",value:totalInRunCarbs,unit:"g carbs",color:ACCENT},
+                          {label:"CARBS/HR RANGE",value:`${carbsPerHrLow}–${carbsPerHrHigh}`,unit:"g/hr",color:"#fbbf24"},
+                          {label:"WATER PER GEL",value:"150–200",unit:"ml",color:"#60a5fa"},
+                        ].map(({label,value,unit,color})=>(
+                          <div key={label} style={{background:INNER,borderRadius:8,padding:"10px 12px",border:`1px solid ${color}20`}}>
+                            <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.08em",marginBottom:3}}>{label}</div>
+                            <div style={{fontSize:18,fontWeight:700,fontFamily:mono,color,lineHeight:1}}>
+                              {value} <span style={{fontSize:10,fontWeight:400,color:"#475569"}}>{unit}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Gel brand comparison */}
+                      <div style={{background:INNER,borderRadius:10,padding:"14px 16px",border:`1px solid ${BORDER}`}}>
+                        <div style={{fontSize:10,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:10}}>POPULAR GEL OPTIONS</div>
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {[
+                            // Carb counts verified via Pace Athletic product pages (paceathletic.com)
+                            {brand:"Maurten Gel 100",carbs:"25g",kcal:100,transporter:"multi",notes:"Hydrogel technology. Glucose+fructose 0.8:1. Mildest on the gut of any gel tested.",badge:"GI-FRIENDLY"},
+                            {brand:"Maurten Gel 100 CAF",carbs:"25g",kcal:100,transporter:"multi",notes:"100mg caffeine. Identical formula to non-caf. Save 1–2 for km 30–38.",badge:"CAFFEINE BOOST"},
+                            {brand:"Precision Fuel PF30",carbs:"30g",kcal:120,transporter:"multi",notes:"2:1 glucose:fructose. Highest carbs per gel — carry fewer. Informed Sport certified.",badge:"HIGH CARB"},
+                            {brand:"KODA Energy Gel",carbs:"30g",kcal:117,transporter:"single",notes:"Maltodextrin only. Semi-liquid, easy to take at speed. 80mg caffeine in some flavours.",badge:"SEMI-LIQUID"},
+                            {brand:"GU Energy Gel",carbs:"21g",kcal:100,transporter:"multi",notes:"Maltodextrin + fructose. Contains BCAAs (450mg) + electrolytes. Wide flavour range.",badge:"+ BCAA"},
+                            {brand:"Clif Shot",carbs:"25g",kcal:100,transporter:"multi",notes:"90% organic. Thinner consistency than most. 0–100mg caffeine options.",badge:"ORGANIC"},
+                            {brand:"Fixx Gel X Pro",carbs:"29g",kcal:120,transporter:"multi",notes:"Dextrose + fructose. 220mg sodium per gel — useful for heavy sweaters.",badge:"+ SODIUM"},
+                            {brand:"PURE Fluid Gel 50g",carbs:"25g",kcal:103,transporter:"single",notes:"Maltodextrin only. Very liquid consistency — easiest to swallow mid-race.",badge:"LIQUID"},
+                            {brand:"SiS GO Isotonic",carbs:"22g",kcal:87,transporter:"single",notes:"Glucose (maltodextrin) only — max 60g/hr regardless of volume. No water needed.",badge:"NO WATER"},
+                          ].map(({brand,carbs,kcal,transporter,notes,badge})=>(
+                            <div key={brand} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0",borderBottom:"1px solid #0f172a"}}>
+                              <div style={{flex:1}}>
+                                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2,flexWrap:"wrap"}}>
+                                  <span style={{fontSize:13,color:"#e2e8f0",fontWeight:600}}>{brand}</span>
+                                  <span style={{fontSize:9,padding:"2px 6px",background:transporter==="multi"?"#0d2318":"#0c1420",color:transporter==="multi"?"#4ade80":"#475569",borderRadius:4,fontFamily:mono,border:`1px solid ${transporter==="multi"?"#4ade8030":"#1e293b"}`}}>{transporter==="multi"?"MULTI-TRANSPORTER":"SINGLE-SOURCE"}</span>
+                                </div>
+                                <div style={{fontSize:11,color:"#475569"}}>{notes}</div>
+                              </div>
+                              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                                <span style={{fontFamily:mono,fontSize:13,color:ACCENT,fontWeight:700}}>{carbs}</span>
+                                <span style={{fontFamily:mono,fontSize:10,color:"#475569"}}>{kcal} kcal</span>
+                                <span style={{fontSize:9,padding:"2px 6px",background:`${ACCENT}18`,color:ACCENT,borderRadius:4,fontFamily:mono,fontWeight:700}}>{badge}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{marginTop:14,background:"#1a0505",borderRadius:10,padding:"14px 16px",border:"1px solid #7f1d1d"}}>
+                          <div style={{fontSize:10,fontFamily:mono,color:"#f87171",letterSpacing:"0.12em",marginBottom:8}}>⚠️ GUT TRAINING — NON-NEGOTIABLE</div>
+                          <p style={{fontSize:12,color:"#fca5a5",lineHeight:1.75,margin:0}}>
+                            Taking 60–90g carbs/hr without gut training is a reliable way to end up using a portable toilet at km 28. Your intestinal transporters (SGLT1 and GLUT5) upregulate in response to repeated exposure — research shows gut training reduces GI symptoms by 26–47% and improves carbohydrate absorption by 45–54% (Martinez et al., 2023).
+                            <br/><br/>
+                            <strong style={{color:"#fca5a5"}}>What to do: </strong>Practice your complete gel strategy — same brand, same timing, same volume — on every long run for at least 4–6 weeks before race day. Build up gradually (start with 1 gel/hr, then 2, then 3). A stomach that fails at km 28 on race day is almost always a stomach that was never trained. It is not optional.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ══ RACE MORNING TAB ════════════════════════════════════ */}
+                  {rdTab==="morning"&&(
+                    <div style={{background:CARD,border:`1px solid ${BORDER}`,borderTop:`2px solid ${ACCENT}`,padding:"20px",animation:"fi .3s ease"}}>
+                      <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:16}}>RACE MORNING NUTRITION PROTOCOL</div>
+
+                      {/* The breakfast */}
+                      <div style={{background:INNER,borderRadius:12,padding:18,marginBottom:16,border:`1px solid ${ACCENT}25`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                          <span style={{fontSize:24}}>🌾</span>
+                          <div>
+                            <div style={{fontSize:15,fontWeight:700,color:"#f8fafc"}}>Pre-Race Breakfast · {breakfastTime}</div>
+                            <div style={{fontSize:11,fontFamily:mono,color:ACCENT}}>2 hours 45 min before start · {preRaceCarbs}g carbs target</div>
+                          </div>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                          {[
+                            {meal:"Porridge + banana + honey",kcal:420,carbs:72,tag:"CLASSIC",rec:true},
+                            {meal:"White bagel + peanut butter + banana + OJ",kcal:560,carbs:95,tag:"HIGH CARB",rec:false},
+                            {meal:"White rice + banana + honey (savoury option)",kcal:380,carbs:82,tag:"GI-SAFE",rec:false},
+                            {meal:"Vegan: oat milk porridge + dates + banana",kcal:400,carbs:78,tag:"VEGAN",rec:false},
+                          ].map(({meal,kcal,carbs,tag,rec})=>(
+                            <div key={meal} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:rec?"#0d2318":"#0c1420",borderRadius:8,border:`1px solid ${rec?"#4ade8040":"#1e293b"}`}}>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:13,color:"#e2e8f0"}}>{meal}</div>
+                              </div>
+                              <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                                <span style={{fontFamily:mono,fontSize:11,color:"#475569"}}>{carbs}g C · {kcal} kcal</span>
+                                <span style={{fontSize:9,padding:"2px 6px",background:rec?"#4ade8020":"#1e293b",color:rec?"#4ade80":tag==="VEGAN"?"#86efac":"#64748b",borderRadius:4,fontFamily:mono}}>{rec?"✓ RECOMMENDED":tag}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Pre-race checklist */}
+                      <div style={{background:INNER,borderRadius:12,padding:18,marginBottom:16}}>
+                        <div style={{fontSize:10,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:12}}>RACE MORNING CHECKLIST</div>
+                        {[
+                          {time:"Night before",items:["Lay out race kit including gels in bib pockets","Prepare breakfast ingredients — nothing new","Set two alarms","Confirm start wave and bag drop time","Charge GPS watch"]},
+                          {time:"Wake up",items:["Eat within 30 min of waking","Sip water steadily — don't gulp"]},
+                          {time:"1 hour before",items:["Take electrolyte tablet with 400ml water","Do dynamic warm-up (leg swings, hip circles, short jog)","Final toilet stop"]},
+                          {time:"30 min before",items:["Eat banana or energy bar","Sip 200ml sports drink","Take gel if you tend to go out hard"]},
+                          {time:"At start line",items:["Final sip of water or electrolyte drink","Remind yourself: start conservative, finish strong"]},
+                        ].map(({time,items})=>(
+                          <div key={time} style={{marginBottom:14}}>
+                            <div style={{fontSize:10,fontFamily:mono,color:ACCENT,letterSpacing:"0.08em",marginBottom:6}}>{time.toUpperCase()}</div>
+                            {items.map((item,i)=>(
+                              <div key={i} style={{display:"flex",gap:8,padding:"5px 0",borderBottom:"1px solid #0f172a",alignItems:"flex-start"}}>
+                                <span style={{color:ACCENT,fontSize:10,marginTop:3,flexShrink:0}}>◆</span>
+                                <span style={{fontSize:13,color:"#94a3b8",lineHeight:1.5}}>{item}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Avoid on race morning */}
+                      <div style={{background:"#150a0a",borderRadius:10,padding:"14px 16px",border:"1px solid #2d1515"}}>
+                        <div style={{fontSize:10,fontFamily:mono,color:"#f87171",letterSpacing:"0.1em",marginBottom:10}}>🚫 NEVER ON RACE MORNING</div>
+                        {["High-fibre foods (bran, brown rice, wholegrain everything)","Anything you haven't eaten before a long run in training","Excessive fat or protein — slows gastric emptying","Large dairy portions if you're lactose-sensitive","Too much caffeine if you don't normally use it","Alcohol the night before (even one drink disrupts sleep quality and glycogen storage)"].map((item,i)=>(
+                          <div key={i} style={{display:"flex",gap:8,padding:"6px 0",borderBottom:i<5?"1px solid #2d1515":"none",alignItems:"flex-start"}}>
+                            <span style={{color:"#f87171",fontSize:10,marginTop:3,flexShrink:0}}>✕</span>
+                            <span style={{fontSize:13,color:"#94a3b8",lineHeight:1.5}}>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ══ RECOVERY TAB ════════════════════════════════════════ */}
+                  {rdTab==="recovery"&&(
+                    <div style={{background:CARD,border:`1px solid ${BORDER}`,borderTop:`2px solid #4ade80`,padding:"20px",animation:"fi .3s ease"}}>
+                      <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:16}}>POST-RACE RECOVERY PROTOCOL</div>
+
+                      {/* Immediate window */}
+                      <div style={{background:INNER,borderRadius:12,padding:18,marginBottom:14,border:"1px solid #4ade8025"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                          <span style={{fontSize:22}}>⚡</span>
+                          <div>
+                            <div style={{fontSize:14,fontWeight:700,color:"#f8fafc"}}>0–20 Min: Critical Window</div>
+                            <div style={{fontSize:11,fontFamily:mono,color:"#4ade80"}}>
+                              {kg?`${immCarbs}g carbs + ${immProtein}g protein — `:""}{typeof immKcal==="number"?`~${immKcal} kcal / ${Math.round(immKcal*4.184)} kJ`:""}
+                            </div>
+                          </div>
+                        </div>
+                        <p style={{fontSize:13,color:"#64748b",lineHeight:1.65,marginBottom:12}}>GLUT4 transporters are maximally active. Muscles will absorb carbs rapidly without insulin. This is your highest-value fuelling window of the entire day. Don't wait until you feel hungry.</p>
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {[
+                            {item:"Chocolate milk (500ml)",kcal:350,note:"3:1 carb:protein ratio. Clinical gold standard."},
+                            {item:"Recovery shake + banana",kcal:320,note:"If solid food feels hard after finishing."},
+                            {item:"Yogurt + granola + fruit",kcal:380,note:"If you can stomach solid food immediately."},
+                            {item:"Vegan: pea protein shake + 2 bananas",kcal:350,note:"Equivalent plant-based recovery."},
+                          ].map(({item,kcal,note})=>(
+                            <div key={item} style={{padding:"8px 12px",background:"#0c1420",borderRadius:8,border:"1px solid #1e293b",display:"flex",gap:10,alignItems:"flex-start"}}>
+                              <span style={{color:"#4ade80",fontSize:10,marginTop:4,flexShrink:0}}>◆</span>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:13,color:"#e2e8f0",fontWeight:600}}>{item}</div>
+                                <div style={{fontSize:11,color:"#475569"}}>{note}</div>
+                              </div>
+                              <span style={{fontFamily:mono,fontSize:11,color:"#475569",flexShrink:0}}>{kcal} kcal</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 2-hour meal */}
+                      <div style={{background:INNER,borderRadius:12,padding:18,marginBottom:14,border:"1px solid #a78bfa25"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                          <span style={{fontSize:22}}>🍽️</span>
+                          <div>
+                            <div style={{fontSize:14,fontWeight:700,color:"#f8fafc"}}>1–2 Hours: Full Recovery Meal</div>
+                            <div style={{fontSize:11,fontFamily:mono,color:"#a78bfa"}}>
+                              {kg?`${Math.round(1.2*kg)}g carbs + ${Math.round(0.4*kg)}g protein`:""}
+                            </div>
+                          </div>
+                        </div>
+                        <p style={{fontSize:13,color:"#64748b",lineHeight:1.65,marginBottom:12}}>Muscle damage continues to accumulate for 24–48hrs post-marathon. This meal starts the multi-day repair process. Prioritise anti-inflammatory foods alongside carbs and protein.</p>
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {[
+                            {item:"Pasta + salmon + spinach",note:"Omega-3s reduce DOMS. Iron from spinach addresses haemolysis."},
+                            {item:"Rice bowl + chicken + avocado",note:"Complete amino acids. Avocado vitamin E for cell repair."},
+                            {item:"Jacket potato + cottage cheese + mixed salad",note:"High leucine triggers sustained MPS."},
+                            {item:"Vegan: lentil & sweet potato bowl + tahini",note:"Complete plant protein. Anti-inflammatory turmeric base."},
+                          ].map(({item,note})=>(
+                            <div key={item} style={{padding:"8px 12px",background:"#0c1420",borderRadius:8,border:"1px solid #1e293b",display:"flex",gap:10,alignItems:"flex-start"}}>
+                              <span style={{color:"#a78bfa",fontSize:10,marginTop:4,flexShrink:0}}>◆</span>
+                              <div>
+                                <div style={{fontSize:13,color:"#e2e8f0",fontWeight:600}}>{item}</div>
+                                <div style={{fontSize:11,color:"#475569"}}>{note}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Days 1-3 post race */}
+                      <div style={{background:INNER,borderRadius:12,padding:18,border:"1px solid #60a5fa25"}}>
+                        <div style={{fontSize:10,fontFamily:mono,color:"#60a5fa",letterSpacing:"0.1em",marginBottom:12}}>📅 DAYS 1–3 POST-MARATHON</div>
+                        {[
+                          {day:"Day 1",text:"Don't restrict calories — your body needs to repair. Keep protein high (1.5–2g/kg). Inflammation will peak; eat salmon, walnuts, berries, leafy greens. Limit alcohol — it severely impairs muscle protein synthesis."},
+                          {day:"Day 2",text:"DOMS will be worst today. Gentle movement (walking, very easy swim) is better than complete rest. Continue high protein. Tart cherry juice has clinical evidence for reducing post-exercise muscle soreness."},
+                          {day:"Day 3",text:"Begin transitioning back to normal training nutrition. Carbohydrate intake can normalise. Iron-rich meals remain important for the next 1–2 weeks due to prolonged haemolysis from the race."},
+                        ].map(({day,text})=>(
+                          <div key={day} style={{marginBottom:14,paddingBottom:14,borderBottom:"1px solid #0f172a"}}>
+                            <div style={{fontSize:11,fontFamily:mono,color:"#60a5fa",marginBottom:5}}>{day.toUpperCase()}</div>
+                            <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.65,margin:0}}>{text}</p>
+                          </div>
+                        ))}
+                        <div style={{fontSize:12,color:"#334155",lineHeight:1.5}}>🏅 You've earned it — celebrate properly. One indulgent meal won't derail your recovery. Enjoy the finish.</div>
+                      </div>
+
+                      {/* Hydration post-race */}
+                      <div style={{marginTop:14,background:INNER,borderRadius:10,padding:"14px 16px",border:"1px solid #60a5fa20"}}>
+                        <div style={{fontSize:10,fontFamily:mono,color:"#60a5fa",letterSpacing:"0.1em",marginBottom:8}}>💧 POST-RACE HYDRATION</div>
+                        <p style={{fontSize:13,color:"#64748b",lineHeight:1.65,margin:0}}>
+                          Drink 1.5× your sweat loss — estimated <strong style={{color:"#60a5fa"}}>{typeof postFluid==="number"?`${postFluid}ml`:"calculate using your weight"}</strong> over the next 4–6 hours. Include sodium (electrolyte drink or salty food) to retain the fluid rather than excrete it. Weigh yourself before and after if possible: 1kg lost ≈ 1L sweat.
+                        </p>
+                      </div>
+                    </div>
+
+                  )}
+
+
+                  {/* ══ BONK CHECK TAB ════════════════════════════════ */}
+                  {rdTab==="bonk"&&(
+                    <div style={{background:"#0c1420",border:"1px solid #1e293b",borderTop:"2px solid #f87171",padding:"20px",animation:"fi .3s ease"}}>
+                      <div style={{fontSize:11,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:16}}>BONK RISK CALCULATOR · DOES YOUR FUELLING PLAN HOLD UP?</div>
+
+                      {/* Input row */}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:14}}>
+                        <div style={{background:"#080f1a",border:"1px solid #1e293b",borderRadius:10,padding:"12px 14px"}}>
+                          <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:6}}>BODY WEIGHT</div>
+                          <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                            <input type="number" min="40" max="150" value={bonkWeight} onChange={e=>setBonkWeight(e.target.value)}
+                              style={{flex:1,background:"#040a0f",border:"1px solid #1e293b",borderRadius:6,padding:"7px 8px",color:"#f8fafc",fontSize:15,fontFamily:mono,outline:"none",minWidth:0}}/>
+                            <span style={{fontSize:11,color:"#475569",fontFamily:mono,flexShrink:0}}>kg</span>
+                          </div>
+                        </div>
+                        <div style={{background:"#080f1a",border:"1px solid #1e293b",borderRadius:10,padding:"12px 14px"}}>
+                          <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:6}}>FINISH TIME</div>
+                          <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                            <input type="text" value={bonkTime} placeholder="3:30" onChange={e=>setBonkTime(e.target.value)}
+                              style={{flex:1,background:"#040a0f",border:"1px solid #1e293b",borderRadius:6,padding:"7px 8px",color:"#f8fafc",fontSize:15,fontFamily:mono,outline:"none",minWidth:0}}/>
+                            <span style={{fontSize:11,color:"#475569",fontFamily:mono,flexShrink:0}}>h:mm</span>
+                          </div>
+                        </div>
+                        <div style={{background:"#080f1a",border:"1px solid #1e293b",borderRadius:10,padding:"12px 14px"}}>
+                          <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:6}}>CARBS / HR</div>
+                          <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                            <input type="number" min="0" max="120" value={bonkCarbs} onChange={e=>setBonkCarbs(e.target.value)}
+                              style={{flex:1,background:"#040a0f",border:"1px solid #1e293b",borderRadius:6,padding:"7px 8px",color:"#f8fafc",fontSize:15,fontFamily:mono,outline:"none",minWidth:0}}/>
+                            <span style={{fontSize:11,color:"#475569",fontFamily:mono,flexShrink:0}}>g/hr</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Experience picker — compact radio style */}
+                      <div style={{marginBottom:14}}>
+                        <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:8}}>YOUR MARATHON EXPERIENCE <span style={{color:"#334155"}}>(sets starting glycogen)</span></div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:6}}>
+                          {[
+                            {id:"first",   label:"First marathon",      glycogen:200, color:"#f87171"},
+                            {id:"some",    label:"A few under my belt", glycogen:260, color:"#f59e0b"},
+                            {id:"trained", label:"Experienced",         glycogen:300, color:"#4ade80"},
+                            {id:"loaded",  label:"Carb-loaded & trained",glycogen:360,color:"#60a5fa"},
+                          ].map(({id,label,glycogen,color})=>(
+                            <button key={id} onClick={()=>{setBonkExp(id);setBonkGlycogen(String(glycogen));}}
+                              style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:8,
+                                border:`1px solid ${bonkExp===id?color:"#1e293b"}`,
+                                background:bonkExp===id?`${color}12`:"#040a0f",
+                                cursor:"pointer",textAlign:"left",transition:"all .15s",width:"100%"}}>
+                              <div style={{width:8,height:8,borderRadius:"50%",border:`2px solid ${color}`,background:bonkExp===id?color:"transparent",flexShrink:0,transition:"all .15s"}}/>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:11,fontWeight:600,color:bonkExp===id?"#f8fafc":"#64748b",lineHeight:1.3}}>{label}</div>
+                                <div style={{fontSize:9,fontFamily:mono,color:bonkExp===id?color:"#334155"}}>~{glycogen}g glycogen</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* ── Inline calculation ── */}
+                      {(()=>{
+                        const bwt    = Math.max(30,parseFloat(bonkWeight)||70);
+                        const bcarbs = Math.max(0, parseFloat(bonkCarbs)||0);
+                        const bglyc  = Math.max(100,parseFloat(bonkGlycogen)||200);
+                        const parseBT=(s)=>{const p=(s||"3:30").split(":").map(Number);return(p.length===2&&!isNaN(p[0])&&!isNaN(p[1]))?(p[0]+p[1]/60):3.5;};
+                        const raceHrs=Math.max(0.5,parseBT(bonkTime));
+                        const carbBurnPerHr   =bwt*0.9;
+                        const usableCarbsPerHr=bcarbs*0.85;
+                        const totalBurn       =carbBurnPerHr*raceHrs;
+                        const totalConsumed   =usableCarbsPerHr*raceHrs;
+                        const remaining       =Math.round(bglyc+totalConsumed-totalBurn);
+                        const recCarbsPerHr   =Math.round(carbBurnPerHr*0.9);
+                        const gapGhr          =Math.max(0,recCarbsPerHr-bcarbs);
+                        const extraGels       =gapGhr>0?Math.ceil(gapGhr/21.25):0;
+                        const gelEveryMins    =extraGels>0?Math.round(60/extraGels):null;
+                        const risk=remaining>150?"low":remaining>=50?"moderate":"high";
+                        const RC={low:"#4ade80",moderate:"#f59e0b",high:"#f87171"};
+                        const RBG={low:"#091a10",moderate:"#1a0f00",high:"#1a0505"};
+                        const RBD={low:"#4ade8030",moderate:"#f59e0b30",high:"#f8717130"};
+                        const RL={low:"LOW BONK RISK",moderate:"MODERATE BONK RISK",high:"HIGH BONK RISK"};
+                        const RE={low:"✅",moderate:"⚠️",high:"🔴"};
+                        const RT={
+                          low:`~${remaining}g glycogen remaining at finish — above the depletion threshold. On track. Practice this intake on long runs to confirm your gut handles it.`,
+                          moderate:`~${Math.max(0,remaining)}g remaining at the finish. Expect fatigue and pace loss in the final 8–10km. Add ~${Math.round(gapGhr)}g/hr (about ${extraGels===1?"one extra gel":"an extra gel"} every ${gelEveryMins||45} min).`,
+                          high:`Glycogen ${remaining<0?"runs out ~"+Math.round(Math.abs(remaining)/carbBurnPerHr*60)+" min before the finish":"critically low at the line"}. High likelihood of hitting the wall. Add ${extraGels} gel${extraGels!==1?"s":""} per hour.`,
+                        };
+                        const hrs2=Math.floor(raceHrs),mins2=Math.round((raceHrs-hrs2)*60);
+                        const shareText=`My marathon fuelling strategy has a ${RL[risk]}.
+
+Weight: ${bwt}kg | Goal: ${hrs2}:${String(mins2).padStart(2,"0")} | Fuelling: ${bcarbs}g carbs/hr
+Est. glycogen at finish: ${Math.max(0,remaining)}g
+
+Check yours → https://marathon-fuel.app`;
+                        return(
+                          <div style={{animation:"fi .2s ease"}}>
+
+                            {/* Stats mini-strip */}
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(100px,1fr))",gap:6,marginBottom:12}}>
+                              {[
+                                {l:"BURN RATE",   v:Math.round(carbBurnPerHr),   u:"g/hr",col:"#f87171"},
+                                {l:"USABLE/HR",   v:Math.round(usableCarbsPerHr),u:"g/hr",col:"#60a5fa"},
+                                {l:"TOTAL BURNED",v:Math.round(totalBurn),       u:"g",   col:"#f87171"},
+                                {l:"ABSORBED",    v:Math.round(totalConsumed),   u:"g",   col:"#60a5fa"},
+                                {l:"STORES",      v:bglyc,                       u:"g",   col:"#a78bfa"},
+                                {l:"AT FINISH",   v:Math.max(0,remaining),       u:"g",   col:RC[risk]},
+                              ].map(({l,v,u,col})=>(
+                                <div key={l} style={{background:"#080f1a",borderRadius:7,padding:"8px 10px",border:"1px solid #0f172a"}}>
+                                  <div style={{fontSize:8,fontFamily:mono,color:"#334155",letterSpacing:"0.06em",marginBottom:3,lineHeight:1.2}}>{l}</div>
+                                  <div style={{display:"flex",alignItems:"baseline",gap:2}}>
+                                    <span style={{fontSize:16,fontWeight:700,fontFamily:mono,color:col,lineHeight:1}}>{v}</span>
+                                    <span style={{fontSize:9,color:"#475569",fontFamily:mono}}>{u}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Risk card */}
+                            <div style={{background:RBG[risk],border:`1px solid ${RBD[risk]}`,borderRadius:12,padding:"16px 18px",marginBottom:12}}>
+                              <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+                                <span style={{fontSize:26,lineHeight:1}}>{RE[risk]}</span>
+                                <div style={{flex:1,minWidth:120}}>
+                                  <div style={{fontSize:9,fontFamily:mono,color:"#475569",letterSpacing:"0.1em",marginBottom:3}}>BONK RISK</div>
+                                  <div style={{fontFamily:bebas,fontSize:"clamp(18px,4vw,24px)",color:RC[risk],letterSpacing:"0.06em",lineHeight:1}}>{RL[risk]}</div>
+                                </div>
+                                <div style={{background:"#080f1a",borderRadius:7,padding:"6px 12px",border:`1px solid ${RC[risk]}20`,textAlign:"center",flexShrink:0}}>
+                                  <div style={{fontSize:8,fontFamily:mono,color:"#475569",marginBottom:1}}>GLYCOGEN AT FINISH</div>
+                                  <div style={{fontFamily:mono,fontSize:18,fontWeight:700,color:RC[risk],lineHeight:1}}>{Math.max(0,remaining)}g</div>
+                                  {remaining<0&&<div style={{fontSize:8,fontFamily:mono,color:"#f87171",marginTop:1}}>depleted early</div>}
+                                </div>
+                              </div>
+
+                              {/* Segment bar */}
+                              <div style={{display:"flex",gap:3,marginBottom:6}}>
+                                {[{id:"low",col:"#4ade80",bg:"#091a10"},{id:"moderate",col:"#f59e0b",bg:"#1a0f00"},{id:"high",col:"#f87171",bg:"#1a0505"}].map(({id,col,bg})=>(
+                                  <div key={id} style={{flex:1,padding:"5px 0",borderRadius:5,background:risk===id?col:bg,border:`1px solid ${col}${risk===id?"":"20"}`,textAlign:"center",transition:"all .3s"}}>
+                                    <span style={{fontSize:8,fontFamily:mono,fontWeight:700,color:risk===id?"#040a0f":col,letterSpacing:"0.06em"}}>{id.toUpperCase()}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{height:5,borderRadius:3,background:"#0f172a",overflow:"hidden",marginBottom:12}}>
+                                <div style={{height:"100%",width:`${Math.max(2,Math.min(100,Math.round(Math.max(0,remaining)/600*100)))}%`,background:RC[risk],borderRadius:3,transition:"width .5s ease"}}/>
+                              </div>
+
+                              <p style={{fontSize:12,color:"#94a3b8",lineHeight:1.65,margin:"0 0 10px"}}>{RT[risk]}</p>
+                              <p style={{fontSize:10,color:"#334155",lineHeight:1.4,margin:0,fontStyle:"italic"}}>~{bglyc}g starting glycogen · 0.9g CHO/kg/hr burn rate · 85% absorption (Romijn 1993; Coyle 1986)</p>
+                            </div>
+
+                            {/* Recommendation */}
+                            {bcarbs<recCarbsPerHr&&(
+                              <div style={{background:"#150a0a",border:"1px solid #7f1d1d",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                                <div style={{fontSize:9,fontFamily:mono,color:"#f87171",marginBottom:4,letterSpacing:"0.08em"}}>💡 RECOMMENDATION — UNDER TARGET BY {Math.round(gapGhr)}g/hr</div>
+                                <div style={{fontSize:12,color:"#fca5a5",lineHeight:1.6}}>Add <strong>{extraGels}</strong> gel{extraGels!==1?"s":""} per hour — one every <strong>{gelEveryMins||45} min</strong>. Recommended rate for your weight: <span style={{fontFamily:mono,color:"#f87171"}}>{recCarbsPerHr}g/hr</span>.</div>
+                              </div>
+                            )}
+                            {bcarbs>=recCarbsPerHr&&(
+                              <div style={{background:"#0d2318",border:"1px solid #166534",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                                <div style={{fontSize:9,fontFamily:mono,color:"#4ade80",marginBottom:3,letterSpacing:"0.08em"}}>✓ INTAKE AT OR ABOVE TARGET — {recCarbsPerHr}g/hr recommended</div>
+                                <div style={{fontSize:12,color:"#86efac",lineHeight:1.5}}>Fuelling rate meets the evidence-based target. Focus on gut training and race day execution.</div>
+                              </div>
+                            )}
+
+                            {/* Share */}
+                            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                              <div style={{fontSize:11,color:"#334155"}}>Share your result with your coach or on socials</div>
+                              <button onClick={()=>{try{navigator.clipboard.writeText(shareText).then(()=>{setBonkShareCopied(true);setTimeout(()=>setBonkShareCopied(false),2500);});}catch{}}}
+                                style={{padding:"8px 16px",borderRadius:7,border:`1px solid ${bonkShareCopied?"#4ade8055":"#1e293b"}`,background:bonkShareCopied?"#0d2318":"#080f1a",color:bonkShareCopied?"#4ade80":"#64748b",fontSize:11,fontFamily:mono,fontWeight:700,cursor:"pointer",transition:"all .2s",letterSpacing:"0.06em",flexShrink:0}}>
+                                {bonkShareCopied?"✓ COPIED":"📤 SHARE RESULT"}
+                              </button>
+                            </div>
+
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
+
+        {/* ═══════════════════════════════════════════════════════════════
+            DOWNLOAD RACE FUEL PLAN — PNG (only shown when race date is set)
+        ═══════════════════════════════════════════════════════════════ */}
+        {raceDate&&(
+        <div style={{marginTop:40,borderTop:"1px solid #0f172a",paddingTop:28,display:"flex",flexDirection:"column",alignItems:"center",gap:12,textAlign:"center"}}>
+          <div style={{fontSize:11,fontFamily:mono,color:"#334155",letterSpacing:"0.12em"}}>SHARE YOUR RACE FUEL PLAN</div>
+          <p style={{fontSize:13,color:"#475569",maxWidth:480,lineHeight:1.6,margin:0}}>
+            Download a snapshot of this page as a PNG and share it with your coach, training partners, or social media. Every share helps other runners find this tool.
+          </p>
+          <button
+            id="png-download-btn"
+            onClick={()=>{
+              setPngLoading(true);
+              const el=document.getElementById("root");
+              window.html2canvas(el,{
+                backgroundColor:"#040a0f",
+                scale:1.5,
+                useCORS:true,
+                logging:false,
+                windowWidth:900,
+              }).then(canvas=>{
+                const link=document.createElement("a");
+                link.download="marathon-fuel-plan.png";
+                link.href=canvas.toDataURL("image/png");
+                link.click();
+                setPngLoading(false);
+              }).catch(()=>setPngLoading(false));
+            }}
+            style={{display:"inline-flex",alignItems:"center",gap:10,padding:"13px 28px",borderRadius:10,border:"1px solid #4ade8050",background:"linear-gradient(135deg,#0d2318,#091a10)",color:"#4ade80",fontSize:13,fontFamily:mono,fontWeight:700,cursor:"pointer",letterSpacing:"0.08em",transition:"all .2s",boxShadow:"0 0 20px #4ade8015"}}>
+            {pngLoading
+              ? <><span style={{display:"inline-block",width:14,height:14,border:"2px solid #4ade8040",borderTop:"2px solid #4ade80",borderRadius:"50%",animation:"pulse .8s linear infinite"}}/>GENERATING…</>
+              : <>📸 Download Race Fuel Plan (PNG)</>}
+          </button>
+          <div style={{fontSize:11,color:"#1e293b",fontFamily:mono}}>High-res · instant · no account needed</div>
+        </div>
         )}
-      </div>
+
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
     </div>
   );
